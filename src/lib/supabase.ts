@@ -11,7 +11,10 @@ export const supabase: SupabaseClient = createClient(
   anonKey ?? "nao-configurado",
   {
     auth: {
-      flowType: "pkce",
+      // "implicit": o link do e-mail funciona em qualquer navegador ou aparelho.
+      // Com "pkce" ele só completa a entrada no navegador em que foi pedido,
+      // o que falha quando a pessoa abre o e-mail no celular.
+      flowType: "implicit",
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,

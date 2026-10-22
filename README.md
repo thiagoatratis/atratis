@@ -38,7 +38,7 @@ Em **Authentication**:
   - **Site URL:** o endereço onde o sistema vai ficar publicado.
   - **Redirect URLs:** esse mesmo endereço com `/**` no fim. Para testar na sua máquina, inclua também `http://localhost:5173/**`.
 - **Emails → SMTP:** o envio padrão do Supabase só manda poucos e-mails por hora e serve apenas para teste. Antes de liberar para os clientes, configure um SMTP próprio (Google Workspace, Resend ou outro).
-- **Emails → Templates → Magic Link:** obrigatório. O e-mail precisa trazer o código de 6 dígitos (`{{ .Token }}`). O código funciona em qualquer aparelho; o link só funciona no mesmo navegador em que foi pedido. Modelo usado:
+- **Emails → Templates → Magic Link:** o Supabase só libera a edição depois de configurar um SMTP próprio. Até lá vale o modelo padrão, só com o link; o site usa o login "implicit", e o link funciona em qualquer aparelho. Com o SMTP pronto, use o modelo abaixo, que acrescenta o código de 6 dígitos. A tela de entrada já aceita o código, em "O e-mail trouxe um código de acesso?":
 
   > **Assunto:** Seu código de acesso ao portal da Atratis
   >

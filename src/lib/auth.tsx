@@ -38,7 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!ativo) return;
       setSession(data.session);
       // Depois de entrar pelo link, tira o código de uso único do endereço.
-      if (data.session && new URLSearchParams(window.location.search).has("code")) {
+      if (data.session && (new URLSearchParams(window.location.search).has("code") || /access_token=/.test(window.location.hash))) {
         window.history.replaceState(null, "", window.location.pathname);
       }
       await carregarPerfil(data.session);

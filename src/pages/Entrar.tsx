@@ -19,9 +19,9 @@ function falhaDoLink(): string | null {
   window.history.replaceState(null, "", window.location.pathname);
   const descricao = (busca.get("error_description") || hash.get("error_description") || "").toLowerCase();
   if (/expired|invalid/.test(descricao)) {
-    return "Esse link já foi usado ou venceu. Peça um código novo abaixo.";
+    return "Esse link já foi usado ou venceu. Peça um novo abaixo.";
   }
-  return "Não deu para entrar por esse link. Isso acontece quando ele é aberto em outro navegador ou no celular. Peça um código abaixo e digite-o aqui.";
+  return "Não deu para entrar por esse link. Peça um novo abaixo; cada link só funciona uma vez.";
 }
 
 export function Entrar() {
@@ -34,6 +34,7 @@ export function Entrar() {
   const [erro, setErro] = useState<string | null>(null);
   const [avisoLink, setAvisoLink] = useState<string | null>(null);
   const [espera, setEspera] = useState(0);
+  const [temCodigo, setTemCodigo] = useState(false);
 
   useEffect(() => {
     setAvisoLink(falhaDoLink());
@@ -73,7 +74,7 @@ export function Entrar() {
     try {
       if (comSenha) {
         const { error } = await supabase.auth.signInWithPassword({ email: alvo, password: senha });
-        if (error) setErro("E-mail ou senha não conferem. Se ainda não definiu uma senha, entre com o código por e-mail.");
+        if (error) setErro("E-mail ou senha não conferem. Se ainda não definiu uma senha, entre pelo link por e-mail.");
       } else if (await pedirCodigo()) {
         setAvisoLink(null);
         setCodigo("");
@@ -152,7 +153,7 @@ export function Entrar() {
               />
             )}
             <Botao type="submit" variante="primario" carregando={enviando} className="largura-total">
-              {comSenha ? "Entrar" : "Receber código de acesso"}
+              {comSenha ? "Entrar" : "Receber link de acesso"}
             </Botao>
             <button
               type="button"
@@ -162,39 +163,47 @@ export function Entrar() {
                 setErro(null);
               }}
             >
-              {comSenha ? "Entrar com código por e-mail" : "Sou da equipe e tenho senha"}
+              {comSenha ? "Entrar com link por e-mail" : "Sou da equipe e tenho senha"}
             </button>
           </form>
         ) : (
           <form onSubmit={confirmarCodigo} noValidate>
-            <h1>Digite o código</h1>
+            <h1>Confira seu e-mail</h1>
             <p className="entrar-texto">
-              Se <strong>{alvo}</strong> estiver cadastrado, um e-mail com o código de acesso chega em
-              instantes. O código funciona em qualquer aparelho.
+              Se <strong>{alvo}</strong> estiver cadastrado, um e-mail com o link de acesso chega em instantes.
+              Abra o link no computador ou no celular: ele funciona em qualquer aparelho.
             </p>
-            <Campo
-              autoFocus
-              rotulo="Código de acesso"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={10}
-              className="campo-codigo"
-              value={codigo}
-              onChange={(e) => setCodigo(e.target.value.replace(/[^\d]/g, ""))}
-              erro={erro}
-              ajuda="Se preferir, clique no link do e-mail, mas abra-o neste mesmo navegador."
-            />
-            <Botao type="submit" variante="primario" carregando={enviando} className="largura-total">
-              Entrar
-            </Botao>
+            {!temCodigo ? (
+              <button type="button" className="link-discreto" onClick={() => setTemCodigo(true)}>
+                O e-mail trouxe um código de acesso?
+              </button>
+            ) : (
+              <>
+                <Campo
+                  autoFocus
+                  rotulo="Código de acesso"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={10}
+                  className="campo-codigo"
+                  value={codigo}
+                  onChange={(e) => setCodigo(e.target.value.replace(/[^\d]/g, ""))}
+                  erro={erro}
+                />
+                <Botao type="submit" variante="primario" carregando={enviando} className="largura-total">
+                  Entrar com o código
+                </Botao>
+              </>
+            )}
             <div className="entrar-acoes">
               <button type="button" className="link-discreto" disabled={espera > 0 || enviando} onClick={() => void reenviar()}>
-                {espera > 0 ? `Reenviar código em ${espera}s` : "Reenviar código"}
+                {espera > 0 ? `Reenviar e-mail em ${espera}s` : "Reenviar e-mail"}
               </button>
               <button type="button" className="link-discreto" onClick={() => { setEtapa("email"); setErro(null); }}>
                 Usar outro e-mail
               </button>
             </div>
+            {!temCodigo && erro && <p className="campo-msg erro" role="alert">{erro}</p>}
             <p className="entrar-texto suave">
               Não chegou? Veja a caixa de spam ou peça à Atratis para confirmar o seu cadastro.
             </p>
