@@ -118,12 +118,14 @@ create table public.agency_settings (
 create table public.audit_log (
   id           bigint generated always as identity primary key,
   occurred_at  timestamptz not null default now(),
-  actor_id     uuid references public.profiles (id) on delete set null,
+  -- Sem chave estrangeira de propósito: o histórico é imutável e precisa
+  -- sobreviver à exclusão de usuários e clientes, guardando id e e-mail.
+  actor_id     uuid,
   actor_email  text,
   action       text not null,
   entity       text not null,
   entity_id    text,
-  client_id    uuid references public.clients (id) on delete set null,
+  client_id    uuid,
   details      jsonb not null default '{}'::jsonb
 );
 create index audit_log_client_idx on public.audit_log (client_id, occurred_at desc);
@@ -290,8 +292,7 @@ begin
     tg_table_name,
     coalesce(v_row ->> 'id',
              concat_ws(':', v_row ->> 'client_id', v_row ->> 'user_id')),
-    -- se o cliente acabou de ser apagado, não referencia a linha removida
-    case when tg_op = 'DELETE' and tg_table_name = 'clients' then null else v_client end,
+    v_client,
     v_details
   );
   return coalesce(new, old);

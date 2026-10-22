@@ -20,3 +20,11 @@ select tests.ok(not exists (select 1 from public.audit_log where actor_id is nul
                             and occurred_at > now() - interval '1 minute' and entity_id = tests.id('nortis')::text
                             and details -> 'alteracoes' ? 'razao_social'),
   'alterações feitas por usuário nunca ficam sem autor');
+
+-- Excluir um usuário no painel do Supabase não pode esbarrar na auditoria.
+delete from auth.users where id = tests.id('cli_nortis_leitor');
+select tests.ok(not exists (select 1 from public.profiles where id = tests.id('cli_nortis_leitor')),
+  'usuário excluído no Auth some do sistema');
+select tests.ok(exists (select 1 from public.audit_log where action = 'cliente.aprovador.removido'
+                        and entity_id = tests.id('nortis')::text || ':' || tests.id('cli_nortis_leitor')::text),
+  'a remoção do vínculo fica registrada no histórico');
