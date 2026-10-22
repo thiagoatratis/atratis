@@ -47,7 +47,7 @@ export function Entrar() {
   return (
     <div className="entrar">
       <div className="entrar-arte" aria-hidden>
-        <img src="/logo-mark.png" alt="" />
+        <img src="/logo-mark.svg" alt="" />
       </div>
       <div className="entrar-painel">
         <img className="entrar-logo" src="/logo-atratis.png" alt="Atratis Digital" />

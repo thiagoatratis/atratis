@@ -86,7 +86,7 @@ export function Usuarios() {
           <div className="tabela-moldura">
             <table className="tabela">
               <thead>
-                <tr><th>Pessoa</th><th>Perfil</th><th>Acessa</th><th>Situação</th><th><span className="sr">Ações</span></th></tr>
+                <tr><th>Pessoa</th><th className="col-opcional">Perfil</th><th className="col-opcional">Acessa</th><th>Situação</th><th><span className="sr">Ações</span></th></tr>
               </thead>
               <tbody>
                 {lista.map((u) => {
@@ -97,8 +97,8 @@ export function Usuarios() {
                         <span className="celula-titulo">{u.nome || u.email}{u.id === eu?.id && " (você)"}</span>
                         {u.nome && <span className="celula-sub">{u.email}</span>}
                       </td>
-                      <td>{PERFIL_ROTULO[u.role]}</td>
-                      <td className="celula-quebra">{acessa || <span className="falta">Nenhum cliente</span>}</td>
+                      <td className="col-opcional">{PERFIL_ROTULO[u.role]}</td>
+                      <td className="celula-quebra col-opcional">{acessa || <span className="falta">Nenhum cliente</span>}</td>
                       <td>{u.ativo ? <Selo tom="ok">Ativo</Selo> : <Selo>Inativo</Selo>}</td>
                       <td className="acoes-linha">
                         <Botao variante="fantasma" onClick={() => setEditando(u)}><LuPencil /> Editar</Botao>

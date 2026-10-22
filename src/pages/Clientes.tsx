@@ -93,8 +93,8 @@ export function Clientes() {
             <thead>
               <tr>
                 <th>Cliente</th>
-                <th>CNPJ</th>
-                <th>Cidade</th>
+                <th className="col-opcional">CNPJ</th>
+                <th className="col-opcional">Cidade</th>
                 <th className="num">Aprovadores</th>
                 <th>Situação</th>
               </tr>
@@ -110,8 +110,8 @@ export function Clientes() {
                       </a>
                       {c.razao_social && <span className="celula-sub">{c.razao_social}</span>}
                     </td>
-                    <td className="tab-num">{c.cnpj ? formatarCNPJ(c.cnpj) : <span className="falta">Não informado</span>}</td>
-                    <td>{c.cidade ? `${c.cidade}${c.uf ? ` - ${c.uf}` : ""}` : <span className="falta">Não informada</span>}</td>
+                    <td className="tab-num col-opcional">{c.cnpj ? formatarCNPJ(c.cnpj) : <span className="falta">Não informado</span>}</td>
+                    <td className="col-opcional">{c.cidade ? `${c.cidade}${c.uf ? ` - ${c.uf}` : ""}` : <span className="falta">Não informada</span>}</td>
                     <td className="num">{n || <span className="falta">Nenhum</span>}</td>
                     <td>{c.ativo ? <Selo tom="ok">Ativo</Selo> : <Selo>Inativo</Selo>}</td>
                   </tr>

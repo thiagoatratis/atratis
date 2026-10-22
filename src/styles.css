@@ -307,12 +307,9 @@ a.celula-titulo:hover { text-decoration: underline; text-underline-offset: 3px; 
 /* ---------------- Entrar ---------------- */
 .entrar { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 520px); background: var(--superficie); }
 .entrar-arte { position: relative; overflow: hidden; background: var(--tinta); }
-.entrar-arte img {
-  position: absolute; width: 118%; max-width: none; right: -34%; bottom: -30%;
-  opacity: .96; filter: saturate(1.05);
-}
+.entrar-arte img { position: absolute; width: 104%; max-width: none; right: -22%; bottom: -18%; }
 .entrar-painel { display: flex; flex-direction: column; justify-content: center; padding: 48px 56px; gap: 0; }
-.entrar-logo { height: 40px; width: auto; margin-bottom: 56px; }
+.entrar-logo { height: 40px; width: auto; align-self: flex-start; margin-bottom: 56px; }
 .entrar-painel h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 10px; }
 .entrar-texto { color: var(--tinta-2); margin-bottom: 26px; max-width: 42ch; }
 .entrar-texto.suave { color: var(--suave); font-size: 14px; }
@@ -358,9 +355,10 @@ a.celula-titulo:hover { text-decoration: underline; text-underline-offset: 3px; 
   .shell { grid-template-columns: 1fr; }
   .lateral {
     position: fixed; z-index: 50; left: 0; top: 0; bottom: 0; width: 280px; transform: translateX(-100%);
-    transition: transform .2s ease; box-shadow: 0 0 40px rgba(0, 0, 0, .2);
+    transition: transform .2s ease, visibility .2s; visibility: hidden;
   }
-  .lateral.aberta { transform: none; }
+  .lateral.aberta { transform: none; visibility: visible; box-shadow: 0 0 40px rgba(0, 0, 0, .2); }
+  .col-opcional { display: none; }
   .lateral-fundo { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(28, 29, 33, .4); }
   .so-mobile { display: inline-grid; margin-left: auto; }
   .barra-mobile {
