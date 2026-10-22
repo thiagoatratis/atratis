@@ -53,8 +53,11 @@ jobs:
       - name: deno check
         run: |
           set +e
-          deno check supabase/functions/*/index.ts > deno-check.txt 2>&1
-          status=$?
+          status=0
+          : > deno-check.txt
+          for d in supabase/functions/*/; do
+            (cd "$d" && deno check index.ts) >> deno-check.txt 2>&1 || status=1
+          done
           cat deno-check.txt
           if [ $status -ne 0 ]; then
             # Publica o erro como anotação (legível pela API do GitHub).
