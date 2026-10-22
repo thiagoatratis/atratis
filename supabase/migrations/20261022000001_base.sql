@@ -588,6 +588,31 @@ revoke insert, delete, truncate on public.agency_settings from authenticated;
 revoke insert, update, delete, truncate on public.audit_log from authenticated, service_role;
 
 -- ---------------------------------------------------------------------
+-- Registro de eventos feitos pela função de servidor (ex.: convite de
+-- usuário, que acontece no Supabase Auth e não passa pela API de dados).
+-- Só a chave de servidor executa; o autor vem do cabeçalho x-actor-id.
+-- ---------------------------------------------------------------------
+create or replace function public.log_admin_event(
+  p_action text, p_entity text, p_entity_id text,
+  p_client uuid default null, p_details jsonb default '{}'::jsonb)
+returns void
+language plpgsql security definer set search_path = ''
+as $$
+declare
+  v_actor uuid := private.actor_id();
+begin
+  if not private.is_service_role() then
+    raise exception 'Uso restrito à função de servidor.' using errcode = '42501';
+  end if;
+  insert into public.audit_log (actor_id, actor_email, action, entity, entity_id, client_id, details)
+  values (v_actor, (select p.email from public.profiles p where p.id = v_actor),
+          p_action, p_entity, p_entity_id, p_client, coalesce(p_details, '{}'::jsonb));
+end;
+$$;
+revoke all on function public.log_admin_event(text, text, text, uuid, jsonb) from public, anon, authenticated;
+grant execute on function public.log_admin_event(text, text, text, uuid, jsonb) to service_role;
+
+-- ---------------------------------------------------------------------
 -- Primeiro administrador
 -- Rodar uma única vez no SQL Editor do Supabase, depois de criar o usuário:
 --   select private.promote_to_admin('email@atratis.com.br');

@@ -1,0 +1,14 @@
+# Configuração usada pela Supabase CLI (supabase db push / functions deploy).
+project_id = "atratis-approval"
+
+[auth]
+# Ninguém se cadastra sozinho: só o administrador cria usuários.
+enable_signup = false
+
+[auth.email]
+enable_signup = false
+
+[functions.admin-users]
+# A função valida o token do usuário por conta própria (auth.getUser) e
+# confere no banco se ele é administrador ativo.
+verify_jwt = false

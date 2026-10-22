@@ -257,6 +257,22 @@ select tests.ok(exists (
     and actor_id = tests.id('admin') and actor_email = 'thiago@atratis.com.br'),
   'auditoria atribui ao admin a ação feita pela função de servidor');
 
+do $$ begin
+  perform public.log_admin_event('usuario.convidado', 'profiles', 'x');
+  raise exception 'FALHOU: usuário comum gravou evento de servidor';
+exception when insufficient_privilege then raise notice 'ok  só a função de servidor registra eventos administrativos';
+end $$;
+reset role;
+
+select tests.login_service('admin');
+set role service_role;
+select public.log_admin_event('usuario.convidado', 'profiles', tests.id('cli_nortis')::text, null, '{"perfil":"cliente"}');
+reset role;
+select tests.login('admin');
+set role authenticated;
+select tests.ok(exists (select 1 from public.audit_log where action = 'usuario.convidado' and actor_id = tests.id('admin')),
+  'evento de convite registrado com o admin como autor');
+
 -- ===================================================================
 \echo '— Mudança de papel limpa vínculos'
 -- ===================================================================
