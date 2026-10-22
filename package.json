@@ -1,0 +1,31 @@
+{
+  "name": "atratis-approval",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Portal de aprovação de criativos, orçamentos e Pedidos de Inserção da Atratis Digital",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --pretty",
+    "preview": "vite preview",
+    "test:db": "bash scripts/test-db.sh"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-icons": "^5.5.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
