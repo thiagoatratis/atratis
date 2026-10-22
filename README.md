@@ -38,13 +38,17 @@ Em **Authentication**:
   - **Site URL:** o endereço onde o sistema vai ficar publicado.
   - **Redirect URLs:** esse mesmo endereço com `/**` no fim. Para testar na sua máquina, inclua também `http://localhost:5173/**`.
 - **Emails → SMTP:** o envio padrão do Supabase só manda poucos e-mails por hora e serve apenas para teste. Antes de liberar para os clientes, configure um SMTP próprio (Google Workspace, Resend ou outro).
-- **Emails → Templates → Magic Link:** é opcional, mas vale traduzir o texto. Uma sugestão:
+- **Emails → Templates → Magic Link:** obrigatório. O e-mail precisa trazer o código de 6 dígitos (`{{ .Token }}`). O código funciona em qualquer aparelho; o link só funciona no mesmo navegador em que foi pedido. Modelo usado:
 
-  > **Assunto:** Seu acesso ao portal de aprovações da Atratis
+  > **Assunto:** Seu código de acesso: {{ .Token }}
   >
-  > Olá! Clique no link abaixo para entrar no portal de aprovações da Atratis Digital:
-  > `<a href="{{ .ConfirmationURL }}">Entrar no portal</a>`
-  > O link vale por pouco tempo e só funciona uma vez. Se você não pediu este acesso, ignore este e-mail.
+  > ```html
+  > <h2>Seu código de acesso ao portal da Atratis</h2>
+  > <p style="font-size:28px;font-weight:700;letter-spacing:6px">{{ .Token }}</p>
+  > <p>Digite este código na tela de entrada. Ele vale por 1 hora e só pode ser usado uma vez.</p>
+  > <p>Se estiver no mesmo navegador em que pediu o acesso, também pode <a href="{{ .ConfirmationURL }}">entrar por este link</a>.</p>
+  > <p>Se você não pediu este acesso, ignore este e-mail.</p>
+  > ```
 
 ### 3. Primeiro administrador
 

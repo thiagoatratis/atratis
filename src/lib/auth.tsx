@@ -37,6 +37,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(async ({ data }) => {
       if (!ativo) return;
       setSession(data.session);
+      // Depois de entrar pelo link, tira o código de uso único do endereço.
+      if (data.session && new URLSearchParams(window.location.search).has("code")) {
+        window.history.replaceState(null, "", window.location.pathname);
+      }
       await carregarPerfil(data.session);
       if (ativo) setCarregando(false);
     });

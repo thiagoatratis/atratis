@@ -315,6 +315,10 @@ a.celula-titulo:hover { text-decoration: underline; text-underline-offset: 3px; 
 .entrar-texto.suave { color: var(--suave); font-size: 14px; }
 .entrar form { display: flex; flex-direction: column; gap: 16px; }
 .entrar form .entrar-texto { margin-bottom: 10px; }
+.campo-codigo input { font-size: 24px; letter-spacing: .32em; font-variant-numeric: tabular-nums; text-align: center; font-weight: 700; }
+.entrar-acoes { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.entrar-acoes .link-discreto { margin-top: 0; }
+.link-discreto:disabled { color: var(--suave); text-decoration: none; cursor: default; }
 
 /* ---------------- Portal do cliente ---------------- */
 .portal { min-height: 100vh; background: var(--fundo); }
