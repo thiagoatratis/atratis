@@ -40,7 +40,7 @@ Em **Authentication**:
 - **Emails → SMTP:** o envio padrão do Supabase só manda poucos e-mails por hora e serve apenas para teste. Antes de liberar para os clientes, configure um SMTP próprio (Google Workspace, Resend ou outro).
 - **Emails → Templates → Magic Link:** obrigatório. O e-mail precisa trazer o código de 6 dígitos (`{{ .Token }}`). O código funciona em qualquer aparelho; o link só funciona no mesmo navegador em que foi pedido. Modelo usado:
 
-  > **Assunto:** Seu código de acesso: {{ .Token }}
+  > **Assunto:** Seu código de acesso ao portal da Atratis
   >
   > ```html
   > <h2>Seu código de acesso ao portal da Atratis</h2>
