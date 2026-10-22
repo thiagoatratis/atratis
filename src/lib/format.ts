@@ -33,7 +33,13 @@ const fmtDataHora = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
 });
 
-export const formatarData = (iso: string | null | undefined) => (iso ? fmtData.format(new Date(iso)) : "");
+/** Data no formato dd/mm/aaaa. Datas puras (aaaa-mm-dd) não passam por fuso, para não "voltar um dia". */
+export function formatarData(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const pura = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (pura) return `${pura[3]}/${pura[2]}/${pura[1]}`;
+  return fmtData.format(new Date(iso));
+}
 export const formatarDataHora = (iso: string | null | undefined) => (iso ? fmtDataHora.format(new Date(iso)) : "");
 
 /** Endereço numa linha, no formato usado no P.I. */

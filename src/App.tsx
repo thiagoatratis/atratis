@@ -12,6 +12,9 @@ import { Configuracoes } from "./pages/Configuracoes";
 import { Historico } from "./pages/Historico";
 import { MeuPerfil } from "./pages/MeuPerfil";
 import { Portal } from "./pages/Portal";
+import { Criativos } from "./pages/Criativos";
+import { SolicitacaoDetalhe } from "./pages/SolicitacaoDetalhe";
+import { AprovacaoCliente } from "./pages/AprovacaoCliente";
 import { NaoConfigurado, NaoEncontrada, SemAcesso } from "./pages/Avisos";
 
 function Redirecionar({ para }: { para: string }) {
@@ -30,6 +33,8 @@ function RotasInternas() {
   if (path === "/" ) pagina = <Redirecionar para="/clientes" />;
   else if (path === "/clientes") pagina = <Clientes />;
   else if ((m = matchPath("/clientes/:id", path))) pagina = <ClienteDetalhe key={m.id} id={m.id} />;
+  else if (path === "/criativos") pagina = <Criativos />;
+  else if ((m = matchPath("/criativos/:id", path))) pagina = <SolicitacaoDetalhe key={m.id} id={m.id} />;
   else if (path === "/perfil") pagina = <MeuPerfil />;
   else if (admin && path === "/usuarios") pagina = <Usuarios />;
   else if (admin && path === "/historico") pagina = <Historico />;
@@ -42,7 +47,9 @@ function RotasInternas() {
 function RotasCliente() {
   const { path } = useRouter();
   let pagina: ReactNode;
+  let m: Record<string, string> | null;
   if (path === "/") pagina = <Portal />;
+  else if ((m = matchPath("/aprovacoes/:id", path))) pagina = <AprovacaoCliente key={m.id} id={m.id} />;
   else if (path === "/perfil") pagina = <MeuPerfil />;
   else pagina = <NaoEncontrada inicio="/" />;
   return <ShellCliente>{pagina}</ShellCliente>;
