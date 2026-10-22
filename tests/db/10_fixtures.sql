@@ -84,5 +84,5 @@ end;
 $$;
 
 grant usage on schema tests to anon, authenticated, service_role, authenticator;
-grant select on tests.ids to anon, authenticated, service_role, authenticator;
+grant select, insert, update on tests.ids to anon, authenticated, service_role, authenticator;
 grant execute on all functions in schema tests to anon, authenticated, service_role, authenticator;
