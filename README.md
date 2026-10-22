@@ -64,7 +64,7 @@ Ela cria usuários e define o perfil de cada um. É a única parte que usa a cha
 - **Pelo painel:** em **Edge Functions → Deploy a new function → Via Editor**, use o nome `admin-users`, cole o conteúdo de `supabase/functions/admin-users/index.ts` e desligue **Verify JWT**. A função confere sozinha se quem chama é um administrador ativo.
 - **Pela CLI:** `supabase functions deploy admin-users --no-verify-jwt`.
 
-As variáveis `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY` já vêm preenchidas pelo próprio Supabase dentro da função.
+As chaves já vêm preenchidas pelo próprio Supabase dentro da função: a função usa `SUPABASE_PUBLISHABLE_KEYS` e `SUPABASE_SECRET_KEYS` e, se elas não existirem, as antigas `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY`.
 
 ## Rodar e publicar o front-end
 

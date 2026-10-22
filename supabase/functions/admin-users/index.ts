@@ -14,9 +14,24 @@
 
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 
+// Chaves: usa as novas (publishable / secret) e, se faltarem, as antigas.
+function chave(novas: string, antiga: string): string {
+  const bruto = Deno.env.get(novas);
+  if (bruto) {
+    try {
+      const mapa = JSON.parse(bruto) as Record<string, string>;
+      const v = mapa.default ?? Object.values(mapa)[0];
+      if (typeof v === "string" && v) return v;
+    } catch { /* formato inesperado: tenta a chave antiga */ }
+  }
+  const legado = Deno.env.get(antiga);
+  if (legado) return legado;
+  throw new Error(`Variável ${novas} (ou ${antiga}) não encontrada.`);
+}
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ANON_KEY = chave("SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_ANON_KEY");
+const SERVICE_KEY = chave("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY");
 
 const PERFIS = ["admin", "equipe", "cliente"] as const;
 type Perfil = (typeof PERFIS)[number];
