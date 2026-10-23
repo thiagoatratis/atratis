@@ -1,22 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  LuArrowLeft, LuCopyPlus, LuDownload, LuFileUp, LuLink, LuMerge, LuPencil, LuScissors, LuSend,
+  LuArrowLeft, LuCopyPlus, LuDownload, LuExternalLink, LuEye, LuFileUp, LuLink, LuMerge, LuPencil, LuScissors, LuSend, LuTrash2,
 } from "react-icons/lu";
 import { useAsync } from "../lib/useAsync";
 import { listarClientes, listarUsuarios } from "../lib/api";
 import {
   SECOES_SUGERIDAS, cancelarPlano, contagemSecoes, enviarPdfPlano, enviarPlano, listarDecisoesPlano, listarVersoesPlano,
-  baixarPdfPlano, nomeArquivoPlano, novaVersaoPlano, obterPlano, paginasDaSecao, plural, salvarNotaVersao, salvarSecoes,
-  slidesCitados, type SecaoEditavel,
+  baixarPdfPlano, definirLinkPlano, nomeArquivoPlano, novaVersaoPlano, obterPlano, paginasDaSecao, plural, removerMaterialPlano,
+  salvarNotaVersao, salvarSecoes, slidesCitados, validarLink, type SecaoEditavel,
 } from "../lib/planos";
 import type { DocumentoPdf } from "../lib/leitorPdf";
 import { Link } from "../lib/router";
 import { formatarDataHora } from "../lib/format";
 import {
-  AvisoErro, Botao, CabecalhoPagina, CampoTexto, Carregando, Modal, Selo, Vazio, useAviso,
+  AvisoErro, Botao, CabecalhoPagina, Campo, CampoTexto, Carregando, Modal, Selo, Vazio, useAviso,
 } from "../components/ui";
 import { AvisarCliente } from "../components/AvisarCliente";
 import { Slide, SlideAmpliado, usePdfPlano } from "../components/SlidesPdf";
+import { JanelaLink, urlDoSlide } from "../components/SlidesLink";
 import { PlanoFormulario } from "./PlanoFormulario";
 import {
   STATUS_PLANO, STATUS_SECAO, STATUS_VERSAO_PLANO,
@@ -94,7 +95,7 @@ export function PlanoDetalhe({ id }: { id: string }) {
   const editavel = p.status !== "cancelado";
   const rascunho = editavel && !!vista && vista.id === atual?.id && vista.status === "rascunho";
   const temSecoes = (atual?.secoes.length ?? 0) > 0;
-  const motivoNaoEnvia = !atual?.pdf_path ? "Suba o PDF do plano." : !temSecoes ? "Marque e salve as seções."
+  const motivoNaoEnvia = !atual?.pdf_path && !atual?.link_url ? "Adicione o PDF ou o link do plano." : !temSecoes ? "Marque e salve as seções."
     : secoesSujas ? "Salve as seções antes de enviar." : null;
 
   async function enviar() {
@@ -188,6 +189,11 @@ export function PlanoDetalhe({ id }: { id: string }) {
                 {vista.paginas && <span className="suave">{vista.paginas} slides</span>}
                 {vista.enviado_em && <span className="suave">Enviada em {formatarDataHora(vista.enviado_em)}</span>}
                 {vista.pdf_path && <Botao variante="fantasma" onClick={() => void baixar()}><LuDownload /> Baixar PDF</Botao>}
+                {vista.link_url && (
+                  <a className="btn btn-fantasma" href={urlDoSlide(vista.link_url, 1)} target="_blank" rel="noopener noreferrer">
+                    <LuExternalLink /> Abrir apresentação
+                  </a>
+                )}
               </div>
             )}
             {!rascunho && vista?.observacao && <p className="peca-novidade">O que mudou nesta versão: {vista.observacao}</p>}
@@ -214,7 +220,7 @@ export function PlanoDetalhe({ id }: { id: string }) {
           <section className="painel">
             <h2 className="titulo-painel">Como funciona</h2>
             <ol className="passos-curtos">
-              <li>Exporte o plano do Claude Design em PDF e suba aqui.</li>
+              <li>Suba o PDF exportado do Claude Design, cole o link da apresentação publicada em atratis.com.br, ou os dois.</li>
               <li>Marque onde começa cada seção (Objetivos, Personas…). Capa e sumário podem ser informativos.</li>
               <li>Envie. O cliente aprova ou pede ajuste em cada seção, citando os slides.</li>
               <li>Se pedir ajuste, crie uma versão nova: só as seções que mudaram voltam para ele.</li>
@@ -269,6 +275,20 @@ function MontarEnvio({ plano, versao, pdf, aprovadasAnteriores, onSujo, onMudou 
   const [subindo, setSubindo] = useState<string | null>(null);
   const [nota, setNota] = useState(versao.observacao ?? "");
   const [salvandoNota, setSalvandoNota] = useState(false);
+  const [tirando, setTirando] = useState<"pdf" | "link" | null>(null);
+
+  async function tirar(tipo: "pdf" | "link") {
+    if (!window.confirm(tipo === "pdf" ? "Tirar o PDF desta versão? O cliente verá só o link." : "Tirar o link desta versão? O cliente verá só o PDF.")) return;
+    setTirando(tipo);
+    try {
+      await removerMaterialPlano(versao.id, tipo, versao.pdf_path);
+      onMudou();
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : String(e), "erro");
+    } finally {
+      setTirando(null);
+    }
+  }
 
   async function escolher(f: File | undefined) {
     if (!f) return;
@@ -293,28 +313,41 @@ function MontarEnvio({ plano, versao, pdf, aprovadasAnteriores, onSujo, onMudou 
   return (
     <div className="pilha">
       <div className="passo-envio">
-        <h3>1. PDF do plano</h3>
+        <h3>1. Material do plano</h3>
         <p className="suave">
-          No Claude Design, exporte a apresentação em PDF (até 50 MB) e escolha o arquivo aqui.
-          {versao.numero > 1 && " A versão nova começa com o PDF anterior: troque pelo corrigido."}
+          Use o PDF exportado do Claude Design, o link da apresentação publicada no site da Atratis (com vídeos e carrosséis
+          funcionando) ou os dois. Com os dois, o cliente vê o link e pode trocar para o PDF.
+          {versao.numero > 1 && " A versão nova começa com o material anterior: troque pelo corrigido."}
         </p>
-        <input ref={arquivo} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => void escolher(e.target.files?.[0])} />
-        <div className="acoes-linha">
-          <Botao variante={versao.pdf_path ? "secundario" : "primario"} carregando={!!subindo} onClick={() => arquivo.current?.click()}>
-            <LuFileUp /> {subindo ?? (versao.pdf_path ? "Trocar PDF" : "Escolher PDF")}
-          </Botao>
-          {versao.paginas && <span className="suave">{versao.paginas} slides neste PDF</span>}
+        <div className="material-bloco">
+          <strong>PDF</strong>
+          <input ref={arquivo} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => void escolher(e.target.files?.[0])} />
+          <div className="acoes-linha">
+            <Botao variante={versao.pdf_path ? "secundario" : "primario"} carregando={!!subindo} onClick={() => arquivo.current?.click()}>
+              <LuFileUp /> {subindo ?? (versao.pdf_path ? "Trocar PDF" : "Escolher PDF")}
+            </Botao>
+            {versao.pdf_path && <span className="suave">{versao.paginas} slides neste PDF</span>}
+            {versao.pdf_path && versao.link_url && (
+              <Botao variante="fantasma" carregando={tirando === "pdf"} onClick={() => void tirar("pdf")}><LuTrash2 /> Tirar PDF</Botao>
+            )}
+          </div>
         </div>
+        <MaterialLink versao={versao} tirando={tirando === "link"} onTirar={() => void tirar("link")} onMudou={onMudou} />
       </div>
 
-      {versao.pdf_path && (
+      {(versao.pdf_path || versao.link_url) && versao.paginas && (
         <div className="passo-envio">
           <h3>2. Seções</h3>
-          {pdf.carregando ? <Carregando texto="Abrindo o PDF…" /> : pdf.erro ? <AvisoErro erro={pdf.erro} tentarDeNovo={pdf.tentarDeNovo} /> :
-            pdf.doc && versao.paginas ? (
-              <EditorSecoes key={`${versao.pdf_path}|${versao.paginas}`} versao={versao} paginas={versao.paginas} doc={pdf.doc}
-                proporcao={pdf.proporcao} aprovadasAnteriores={aprovadasAnteriores} onSujo={onSujo} onSalvo={onMudou} />
-            ) : null}
+          {versao.pdf_path ? (
+            pdf.carregando ? <Carregando texto="Abrindo o PDF…" /> : pdf.erro ? <AvisoErro erro={pdf.erro} tentarDeNovo={pdf.tentarDeNovo} /> :
+              pdf.doc ? (
+                <EditorSecoes key={`${versao.pdf_path}|${versao.paginas}`} versao={versao} paginas={versao.paginas} doc={pdf.doc}
+                  proporcao={pdf.proporcao} aprovadasAnteriores={aprovadasAnteriores} onSujo={onSujo} onSalvo={onMudou} />
+              ) : null
+          ) : (
+            <EditorSecoes key={`${versao.link_url}|${versao.paginas}`} versao={versao} paginas={versao.paginas} doc={null}
+              url={versao.link_url!} proporcao={9 / 16} aprovadasAnteriores={aprovadasAnteriores} onSujo={onSujo} onSalvo={onMudou} />
+          )}
         </div>
       )}
 
@@ -343,12 +376,79 @@ function MontarEnvio({ plano, versao, pdf, aprovadasAnteriores, onSujo, onMudou 
   );
 }
 
+function MaterialLink({ versao, tirando, onTirar, onMudou }: {
+  versao: VersaoPlano; tirando: boolean; onTirar: () => void; onMudou: () => void;
+}) {
+  const avisar = useAviso();
+  const [url, setUrl] = useState(versao.link_url ?? "");
+  const [slides, setSlides] = useState(versao.paginas ? String(versao.paginas) : "");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const totalFixo = !!versao.pdf_path;
+  const total = totalFixo ? versao.paginas ?? 0 : Number(slides);
+  const mudou = url.trim().split("#")[0] !== (versao.link_url ?? "") || (!totalFixo && total !== versao.paginas);
+  const repetido = versao.numero > 1 && !!versao.link_url && !mudou;
+
+  async function salvar() {
+    setErro(null);
+    const problema = validarLink(url);
+    if (problema) return setErro(problema);
+    if (!Number.isInteger(total) || total < 1 || total > 500) return setErro("Informe o total de slides da apresentação (o número que aparece no canto, ex.: 06 / 60).");
+    setSalvando(true);
+    try {
+      await definirLinkPlano(versao.id, url, total);
+      avisar(versao.paginas && versao.paginas !== total ? `Link salvo. O total mudou para ${total} slides: confira as seções.` : "Link salvo.");
+      onMudou();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="material-bloco">
+      <strong>Link da apresentação</strong>
+      <div className="grade-link">
+        <Campo rotulo="Endereço" type="url" inputMode="url" placeholder="https://atratis.com.br/uteis/cliente/pca/" value={url}
+          onChange={(e) => setUrl(e.target.value)} />
+        <Campo rotulo="Total de slides" inputMode="numeric" value={totalFixo ? String(versao.paginas) : slides} disabled={totalFixo}
+          onChange={(e) => setSlides(e.target.value.replace(/\D/g, ""))}
+          ajuda={totalFixo ? "Igual ao PDF." : "O número do canto da apresentação (ex.: 06 / 60 → 60)."} />
+      </div>
+      {repetido && (
+        <p className="aviso aviso-atencao pequeno">
+          Esta versão ainda usa o link da versão anterior. Publique a versão corrigida em outro endereço (ex.: com -v{versao.numero} no fim)
+          e cole aqui: o link já aprovado precisa continuar mostrando o que foi aprovado.
+        </p>
+      )}
+      {erro && <p className="campo-msg erro" role="alert">{erro}</p>}
+      <div className="acoes-linha">
+        <Botao variante={versao.link_url ? "secundario" : "primario"} disabled={!mudou || !url.trim()} carregando={salvando} onClick={() => void salvar()}>
+          <LuLink /> {versao.link_url ? "Salvar link" : "Usar este link"}
+        </Botao>
+        {url.trim() && !validarLink(url) && (
+          <a className="btn btn-fantasma" href={urlDoSlide(url.trim().split("#")[0], 1)} target="_blank" rel="noopener noreferrer">
+            <LuEye /> Conferir
+          </a>
+        )}
+        {versao.link_url && versao.pdf_path && (
+          <Botao variante="fantasma" carregando={tirando} onClick={onTirar}><LuTrash2 /> Tirar link</Botao>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface SecaoTela { inicio: number; nome: string; requer: boolean; mantem: string | null }
 
-function EditorSecoes({ versao, paginas, doc, proporcao, aprovadasAnteriores, onSujo, onSalvo }: {
-  versao: VersaoPlano; paginas: number; doc: DocumentoPdf; proporcao: number;
+function EditorSecoes({ versao, paginas, doc, url, proporcao, aprovadasAnteriores, onSujo, onSalvo }: {
+  versao: VersaoPlano; paginas: number; doc: DocumentoPdf | null; url?: string; proporcao: number;
   aprovadasAnteriores: AprovacaoAnterior[]; onSujo: (v: boolean) => void; onSalvo: () => void;
 }) {
+  // Sem PDF (só link): as seções são marcadas pelo número do slide, com a apresentação ao lado.
+  const [previa, setPrevia] = useState(1);
+  const [novoInicio, setNovoInicio] = useState("");
   const avisar = useAviso();
   const inicial = useMemo<SecaoTela[]>(() => versao.secoes.length
     ? versao.secoes.map((s) => ({ inicio: s.pagina_inicio, nome: s.nome, requer: s.requer_aprovacao, mantem: s.mantem_aprovacao_de }))
@@ -385,6 +485,25 @@ function EditorSecoes({ versao, paginas, doc, proporcao, aprovadasAnteriores, on
   function juntar(i: number) {
     setSecoes((l) => l.filter((_, j) => j !== i).map((s, j) => (j === i - 1 ? { ...s, mantem: null } : s)));
   }
+  // Modo link: muda o slide em que a seção começa (entre a anterior e a próxima).
+  function mudarInicio(i: number, valor: number) {
+    const min = secoes[i - 1].inicio + 1;
+    const max = i + 1 < secoes.length ? secoes[i + 1].inicio - 1 : paginas;
+    if (!Number.isInteger(valor) || valor < min || valor > max) {
+      setErro(`A seção ${i + 1} precisa começar entre o slide ${min} e o ${max}.`);
+      return;
+    }
+    setErro(null);
+    setSecoes((l) => l.map((s, j) => (j === i ? { ...s, inicio: valor, mantem: null } : j === i - 1 ? { ...s, mantem: null } : s)));
+  }
+  function adicionarPeloNumero() {
+    const n = Number(novoInicio);
+    if (!Number.isInteger(n) || n < 2 || n > paginas) return setErro(`Escolha um slide entre 2 e ${paginas}.`);
+    if (secoes.some((s) => s.inicio === n)) return setErro(`Já existe uma seção começando no slide ${n}.`);
+    setErro(null);
+    dividir(n);
+    setNovoInicio("");
+  }
 
   async function salvar() {
     setErro(null);
@@ -406,9 +525,24 @@ function EditorSecoes({ versao, paginas, doc, proporcao, aprovadasAnteriores, on
   return (
     <div className="editor-secoes">
       <p className="suave">
-        Dê nome a cada seção e use <strong>Começar seção aqui</strong> no slide onde a próxima começa.
-        Capa, sumário e encerramento podem ficar como informativos: o cliente vê, mas não precisa decidir.
+        {doc
+          ? <>Dê nome a cada seção e use <strong>Começar seção aqui</strong> no slide onde a próxima começa.</>
+          : <>Dê nome a cada seção e informe em que slide ela começa. Use a apresentação ao lado para conferir.</>}
+        {" "}Capa, sumário e encerramento podem ficar como informativos: o cliente vê, mas não precisa decidir.
       </p>
+      {!doc && url && (
+        <div className="previa-link">
+          <div className="acoes-linha">
+            <label className="previa-num">
+              Ver o slide
+              <input type="number" min={1} max={paginas} value={previa}
+                onChange={(e) => setPrevia(Math.min(paginas, Math.max(1, Number(e.target.value) || 1)))} />
+              de {paginas}
+            </label>
+          </div>
+          <JanelaLink url={url} pagina={previa} titulo={`Prévia do slide ${previa}`} sempre />
+        </div>
+      )}
       <datalist id="secoes-sugeridas">{SECOES_SUGERIDAS.map((n) => <option key={n} value={n} />)}</datalist>
 
       {secoes.map((s, i) => {
@@ -423,7 +557,22 @@ function EditorSecoes({ versao, paginas, doc, proporcao, aprovadasAnteriores, on
                 <input list="secoes-sugeridas" value={s.nome} maxLength={120} placeholder="Nome da seção (ex.: Personas)"
                   onChange={(e) => mudar(i, { nome: e.target.value })} />
               </label>
-              <span className="suave tab-num">{paginasDaSecao({ pagina_inicio: s.inicio, pagina_fim: fim(i) })}</span>
+              {!doc && i > 0 ? (
+                <label className="secao-inicio">
+                  começa no slide
+                  <input type="number" min={secoes[i - 1].inicio + 1} max={paginas} defaultValue={s.inicio} key={s.inicio}
+                    onBlur={(e) => { if (Number(e.target.value) !== s.inicio) mudarInicio(i, Number(e.target.value)); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+                  <span className="suave tab-num">até o {fim(i)}</span>
+                </label>
+              ) : (
+                <span className="suave tab-num">{paginasDaSecao({ pagina_inicio: s.inicio, pagina_fim: fim(i) })}</span>
+              )}
+              {!doc && (
+                <Botao variante="fantasma" onClick={() => setPrevia(s.inicio)} title="Mostrar o primeiro slide desta seção na prévia">
+                  <LuEye /> Ver
+                </Botao>
+              )}
               {i > 0 && (
                 <Botao variante="fantasma" onClick={() => juntar(i)} title="Juntar com a seção anterior">
                   <LuMerge /> Juntar com a anterior
@@ -445,7 +594,7 @@ function EditorSecoes({ versao, paginas, doc, proporcao, aprovadasAnteriores, on
                 </select>
               )}
             </div>
-            <div className="grade-slides">
+            {doc && <div className="grade-slides">
               {Array.from({ length: fim(i) - s.inicio + 1 }, (_, k) => s.inicio + k).map((n) => (
                 <Slide key={n} doc={doc} pagina={n} proporcao={proporcao} onAbrir={() => setAmpliar(n)}>
                   {n !== s.inicio && (
@@ -455,11 +604,21 @@ function EditorSecoes({ versao, paginas, doc, proporcao, aprovadasAnteriores, on
                   )}
                 </Slide>
               ))}
-            </div>
+            </div>}
           </section>
         );
       })}
 
+      {!doc && (
+        <div className="acoes-linha">
+          <label className="secao-inicio">
+            Nova seção a partir do slide
+            <input type="number" min={2} max={paginas} value={novoInicio} onChange={(e) => setNovoInicio(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") adicionarPeloNumero(); }} />
+          </label>
+          <Botao onClick={adicionarPeloNumero}><LuScissors /> Adicionar seção</Botao>
+        </div>
+      )}
       {erro && <div className="aviso aviso-erro" role="alert"><p>{erro}</p></div>}
       <div className="acoes-linha barra-salvar">
         <Botao variante="primario" disabled={!sujo} carregando={salvando} onClick={() => void salvar()}>Salvar seções</Botao>
@@ -469,8 +628,10 @@ function EditorSecoes({ versao, paginas, doc, proporcao, aprovadasAnteriores, on
         </span>
       </div>
 
-      <SlideAmpliado doc={doc} proporcao={proporcao} pagina={ampliar} de={1} ate={paginas} titulo="Plano"
-        onMudar={setAmpliar} onFechar={() => setAmpliar(null)} />
+      {doc && (
+        <SlideAmpliado doc={doc} proporcao={proporcao} pagina={ampliar} de={1} ate={paginas} titulo="Plano"
+          onMudar={setAmpliar} onFechar={() => setAmpliar(null)} />
+      )}
     </div>
   );
 }
@@ -483,6 +644,7 @@ function ResumoSecoes({ versao, decisoes, origem, pdf, titulo, baixar }: {
   pdf: Pdf; titulo: string; baixar: () => void;
 }) {
   const [ampliar, setAmpliar] = useState<{ pagina: number; secao: SecaoPlano } | null>(null);
+  const [aberta, setAberta] = useState<string | null>(null);
   if (!versao.secoes.length) return <Vazio titulo="Esta versão não tem seções marcadas">Ela não chegou a ser enviada ao cliente.</Vazio>;
   return (
     <div className="pilha">
@@ -500,6 +662,11 @@ function ResumoSecoes({ versao, decisoes, origem, pdf, titulo, baixar }: {
             </div>
             {mantida && <p className="suave pequeno">Aprovação mantida da versão {mantida.versao}: a equipe indicou que esta seção não mudou.</p>}
             <HistoricoSecao decisoes={ds} />
+            {!pdf.doc && versao.link_url && (
+              aberta === s.id
+                ? <JanelaLink url={versao.link_url} pagina={s.pagina_inicio} titulo={s.nome} />
+                : <div><Botao variante="fantasma" onClick={() => setAberta(s.id)}><LuEye /> Ver na apresentação</Botao></div>
+            )}
             {pdf.doc && (
               <div className="faixa-slides">
                 {Array.from({ length: s.pagina_fim - s.pagina_inicio + 1 }, (_, k) => s.pagina_inicio + k).map((n) => (

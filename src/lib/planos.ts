@@ -160,6 +160,32 @@ export async function baixarPdfPlano(caminho: string, nome: string): Promise<voi
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+// ---------------- Link da apresentação ----------------
+
+/** Só links https do site da Atratis (a mesma regra do banco). */
+export function validarLink(url: string): string | null {
+  const limpo = url.trim().split("#")[0];
+  if (!/^https:\/\/([a-z0-9-]+\.)*atratis\.com\.br(\/[^\s"<>#]*)?$/.test(limpo)) {
+    return "Use o link https da apresentação publicada no site da Atratis (atratis.com.br).";
+  }
+  return null;
+}
+
+export async function definirLinkPlano(versionId: string, url: string, slides: number): Promise<void> {
+  const problema = validarLink(url);
+  if (problema) throw new ErroApp(problema);
+  const { error } = await supabase.rpc("definir_link_plano", { p_version: versionId, p_url: url.trim(), p_slides: slides });
+  erro(error);
+}
+
+/** Tira o PDF ou o link da versão em rascunho (o outro precisa continuar). */
+export async function removerMaterialPlano(versionId: string, tipo: "pdf" | "link", pdfPath?: string | null): Promise<void> {
+  const { error } = await supabase.rpc("remover_material_plano", { p_version: versionId, p_tipo: tipo });
+  erro(error);
+  // O Storage só apaga se nenhuma outra versão usa o arquivo.
+  if (tipo === "pdf" && pdfPath) await supabase.storage.from(BUCKET).remove([pdfPath]);
+}
+
 // ---------------- Seções e fluxo ----------------
 
 export interface SecaoEditavel {

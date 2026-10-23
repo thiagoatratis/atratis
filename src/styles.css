@@ -618,3 +618,20 @@ a.celula-titulo:hover { text-decoration: underline; text-underline-offset: 3px; 
 }
 .slide-rotulo { display: flex; align-items: center; gap: 8px; }
 .slide-tentar { padding: 0; border: 0; background: none; color: var(--marca-escura); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
+
+/* Plano por link */
+.material-bloco { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--linha); border-radius: var(--raio-sm); background: var(--superficie-2); }
+.grade-link { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 10px; }
+.janela-link { display: flex; flex-direction: column; gap: 6px; }
+.janela-link-quadro { position: relative; width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--linha); border-radius: var(--raio-sm); overflow: hidden; background: #111; }
+.janela-link-quadro iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.janela-link-espera { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #c9cbd1; font-size: 13px; pointer-events: none; }
+.janela-link-abrir { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--marca-escura); }
+.previa-link { display: flex; flex-direction: column; gap: 8px; position: sticky; top: 0; z-index: 2; background: var(--fundo); padding-bottom: 8px; }
+.previa-num, .secao-inicio { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.previa-num input, .secao-inicio input { width: 72px; }
+.escolha-formato { align-self: flex-start; }
+@media (max-width: 820px) {
+  .grade-link { grid-template-columns: 1fr; }
+  .previa-link { position: static; }
+}
