@@ -1,42 +1,69 @@
 import { useAsync } from "../lib/useAsync";
 import { listarClientes, listarVinculos } from "../lib/api";
 import { listarSolicitacoes } from "../lib/criativos";
+import { listarOrcamentos, tituloOrcamento, totais } from "../lib/orcamentos";
+import { formatarMoeda } from "../lib/dinheiro";
 import { useAuth } from "../lib/auth";
 import { useRouter } from "../lib/router";
 import { formatarData } from "../lib/format";
 import { AvisoErro, Carregando, Selo } from "../components/ui";
-import { STATUS_SOLICITACAO, type Solicitacao } from "../types";
+import { STATUS_SOLICITACAO, type StatusSolicitacao } from "../types";
+
+/** Item do portal: solicitação de criativos ou orçamento. */
+interface Item {
+  chave: string;
+  caminho: string;
+  tipo: "Criativos" | "Orçamento";
+  titulo: string;
+  clientId: string;
+  status: StatusSolicitacao;
+  detalhe: string;
+  data: string;
+}
+
+const aguardando = (s: StatusSolicitacao) => s === "aguardando_aprovacao" || s === "em_analise";
 
 export function Portal() {
   const { perfil } = useAuth();
   const { navigate } = useRouter();
   const dados = useAsync(async () => {
-    const [empresas, vinculos, solicitacoes] = await Promise.all([listarClientes(), listarVinculos(), listarSolicitacoes()]);
+    const [empresas, vinculos, solicitacoes, orcamentos] = await Promise.all([
+      listarClientes(), listarVinculos(), listarSolicitacoes(), listarOrcamentos(),
+    ]);
     const meus = new Map(vinculos.filter((v) => v.user_id === perfil?.id).map((v) => [v.client_id, v]));
+    const itens: Item[] = [
+      ...solicitacoes.map((s): Item => ({
+        chave: `s-${s.id}`, caminho: `/aprovacoes/${s.id}`, tipo: "Criativos", titulo: s.titulo, clientId: s.client_id,
+        status: s.status, data: s.enviado_em ?? s.updated_at,
+        detalhe: s.prazo_aprovacao && aguardando(s.status) ? `Aprovar até ${formatarData(s.prazo_aprovacao)}` : `Enviada em ${formatarData(s.enviado_em)}`,
+      })),
+      ...orcamentos.map((o): Item => ({
+        chave: `o-${o.id}`, caminho: `/orcamentos/${o.id}`, tipo: "Orçamento", titulo: tituloOrcamento(o), clientId: o.client_id,
+        status: o.status, data: o.enviado_em ?? o.updated_at,
+        detalhe: `${formatarMoeda(totais(o.versoes.at(-1)?.linhas ?? []).valor)}. Enviado em ${formatarData(o.enviado_em)}`,
+      })),
+    ].sort((a, b) => b.data.localeCompare(a.data));
     return {
       empresas: empresas.map((c) => ({ ...c, podeAprovar: meus.get(c.id)?.pode_aprovar ?? false })),
-      solicitacoes,
+      itens,
     };
   }, [perfil?.id]);
 
   const primeiroNome = perfil?.nome?.split(" ")[0];
   const nomeEmpresa = (id: string) => dados.data?.empresas.find((e) => e.id === id)?.nome_comercial;
-  const abertas = (dados.data?.solicitacoes ?? []).filter((s) => s.status === "aguardando_aprovacao" || s.status === "em_analise");
-  const outras = (dados.data?.solicitacoes ?? []).filter((s) => !abertas.includes(s));
+  const abertas = (dados.data?.itens ?? []).filter((i) => aguardando(i.status));
+  const outras = (dados.data?.itens ?? []).filter((i) => !aguardando(i.status));
   const variasEmpresas = (dados.data?.empresas.length ?? 0) > 1;
 
-  const Linha = ({ s }: { s: Solicitacao }) => {
-    const st = STATUS_SOLICITACAO[s.status];
+  const Linha = ({ i }: { i: Item }) => {
+    const st = STATUS_SOLICITACAO[i.status];
     return (
       <li>
-        <button type="button" className="portal-item" onClick={() => navigate(`/aprovacoes/${s.id}`)}>
+        <button type="button" className="portal-item" onClick={() => navigate(i.caminho)}>
           <span className="portal-item-texto">
-            <strong>{s.titulo}</strong>
-            <span>
-              {variasEmpresas ? `${nomeEmpresa(s.client_id)}. ` : ""}
-              {s.prazo_aprovacao && (s.status === "aguardando_aprovacao" || s.status === "em_analise")
-                ? `Aprovar até ${formatarData(s.prazo_aprovacao)}` : `Enviada em ${formatarData(s.enviado_em)}`}
-            </span>
+            <span className="portal-tipo">{i.tipo}</span>
+            <strong>{i.titulo}</strong>
+            <span>{variasEmpresas ? `${nomeEmpresa(i.clientId)}. ` : ""}{i.detalhe}</span>
           </span>
           <Selo tom={st.tom}>{st.rotuloCliente}</Selo>
         </button>
@@ -56,7 +83,7 @@ export function Portal() {
           <section className="portal-bloco" aria-labelledby="pendentes">
             <h2 id="pendentes">Aguardando você</h2>
             {abertas.length ? (
-              <ul className="portal-lista">{abertas.map((s) => <Linha key={s.id} s={s} />)}</ul>
+              <ul className="portal-lista">{abertas.map((i) => <Linha key={i.chave} i={i} />)}</ul>
             ) : (
               <div className="portal-vazio">
                 <p className="vazio-titulo">Nada para aprovar agora</p>
@@ -68,7 +95,7 @@ export function Portal() {
           {outras.length > 0 && (
             <section className="portal-bloco" aria-labelledby="anteriores">
               <h2 id="anteriores">Já decididas e em andamento</h2>
-              <ul className="portal-lista">{outras.map((s) => <Linha key={s.id} s={s} />)}</ul>
+              <ul className="portal-lista">{outras.map((i) => <Linha key={i.chave} i={i} />)}</ul>
             </section>
           )}
 

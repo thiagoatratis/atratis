@@ -10,7 +10,7 @@ import type {
 
 const BUCKET = "criativos";
 
-function erro(e: PostgrestError | null): void {
+export function erro(e: PostgrestError | null): void {
   if (!e) return;
   if (e.code === "P0001" || e.code === "22023") throw new ErroApp(e.message);
   if (e.code === "42501") {

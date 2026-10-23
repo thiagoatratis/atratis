@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { LuArrowLeft, LuCopy, LuLink, LuPencil, LuPlus, LuSend, LuUpload } from "react-icons/lu";
+import { LuArrowLeft, LuLink, LuPencil, LuPlus, LuSend, LuUpload } from "react-icons/lu";
 import { useAsync } from "../lib/useAsync";
 import { listarClientes, listarUsuarios } from "../lib/api";
 import {
@@ -16,6 +16,7 @@ import {
 } from "../components/ui";
 import { Previa } from "../components/Previa";
 import { Conversa } from "../components/Conversa";
+import { AvisarCliente } from "../components/AvisarCliente";
 import { SolicitacaoFormulario } from "./SolicitacaoFormulario";
 import { STATUS_SOLICITACAO, STATUS_VERSAO, type Decisao, type Peca, type Solicitacao, type Versao } from "../types";
 
@@ -91,7 +92,9 @@ export function SolicitacaoDetalhe({ id }: { id: string }) {
         )}
       />
 
-      <AvisarCliente aberto={avisarCliente} solicitacao={s} onFechar={() => setAvisarCliente(false)} />
+      <AvisarCliente aberto={avisarCliente} onFechar={() => setAvisarCliente(false)}
+        caminho={`/aprovacoes/${s.id}`}
+        mensagem={(link) => mensagemCriativos(s, link)} />
 
       {s.status === "cancelado" && (
         <div className="aviso aviso-atencao"><p>Cancelada em {formatarDataHora(s.cancelado_em)}. Motivo: {s.motivo_cancelamento}</p></div>
@@ -487,30 +490,8 @@ function Cancelar({ aberto, requestId, onFechar, onPronto }: { aberto: boolean; 
   );
 }
 
-/** Endereço da página de aprovação que o cliente abre. */
-export function linkDoCliente(requestId: string): string {
-  return `${window.location.origin}/aprovacoes/${requestId}`;
-}
 
-async function copiarTexto(texto: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(texto);
-    return true;
-  } catch {
-    // Navegadores sem permissão de área de transferência: cópia pelo método antigo.
-    const area = document.createElement("textarea");
-    area.value = texto;
-    area.style.position = "fixed";
-    area.style.opacity = "0";
-    document.body.appendChild(area);
-    area.select();
-    const ok = document.execCommand("copy");
-    area.remove();
-    return ok;
-  }
-}
-
-function mensagemPadrao(s: Solicitacao, link: string): string {
+function mensagemCriativos(s: Solicitacao, link: string): string {
   const prazo = s.prazo_aprovacao ? ` até ${formatarData(s.prazo_aprovacao)}` : "";
   return [
     `Olá! Os criativos de "${s.titulo}" estão prontos para a sua aprovação${prazo}.`,
@@ -519,38 +500,4 @@ function mensagemPadrao(s: Solicitacao, link: string): string {
     "",
     "Se pedir para entrar, informe o seu e-mail e abra o link de acesso que chegar na sua caixa de entrada.",
   ].join("\n");
-}
-
-/** O sistema não manda e-mail ao cliente: a equipe avisa com este link (decisão de 22/10/2026). */
-function AvisarCliente({ aberto, solicitacao, onFechar }: { aberto: boolean; solicitacao: Solicitacao; onFechar: () => void }) {
-  const avisar = useAviso();
-  const link = linkDoCliente(solicitacao.id);
-  const [texto, setTexto] = useState("");
-
-  useEffect(() => {
-    if (aberto) setTexto(mensagemPadrao(solicitacao, link));
-  }, [aberto, solicitacao, link]);
-
-  async function copiar(conteudo: string, oque: string) {
-    if (await copiarTexto(conteudo)) avisar(`${oque} copiado.`);
-    else avisar("Não deu para copiar. Selecione o texto e copie manualmente.", "erro");
-  }
-
-  return (
-    <Modal aberto={aberto} titulo="Avisar o cliente" onFechar={onFechar}
-      rodape={<>
-        <Botao onClick={onFechar}>Fechar</Botao>
-        <Botao onClick={() => void copiar(link, "Link")}><LuLink /> Copiar só o link</Botao>
-        <Botao variante="primario" onClick={() => void copiar(texto, "Mensagem")}><LuCopy /> Copiar mensagem</Botao>
-      </>}>
-      <p className="suave">
-        O sistema não manda e-mail ao cliente. Envie este link por WhatsApp ou e-mail. Só quem está cadastrado como
-        aprovador ou visualizador desta empresa consegue abrir.
-      </p>
-      <div className="link-cliente">
-        <code>{link}</code>
-      </div>
-      <CampoTexto rotulo="Mensagem" rows={7} value={texto} onChange={(e) => setTexto(e.target.value)} />
-    </Modal>
-  );
 }

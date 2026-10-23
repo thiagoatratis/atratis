@@ -193,3 +193,79 @@ export const STATUS_VERSAO: Record<StatusVersao, { rotulo: string; tom: "neutro"
   aprovado: { rotulo: "Aprovada", tom: "ok" },
   alteracoes_solicitadas: { rotulo: "Alterações pedidas", tom: "alerta" },
 };
+
+// ---------------- Etapa 3: orçamentos ----------------
+
+export type StatusOrcamento = StatusSolicitacao;
+export type StatusVersaoOrcamento = "rascunho" | "pendente" | "aprovado" | "alteracoes_solicitadas" | "substituida";
+
+export interface Orcamento {
+  id: string;
+  client_id: string;
+  campaign_id: string | null;
+  mes_referencia: string; // aaaa-mm-01
+  titulo: string | null;
+  instrucoes_cliente: string | null;
+  responsavel_id: string | null;
+  status: StatusOrcamento;
+  enviado_em: string | null;
+  visualizado_em: string | null;
+  concluido_em: string | null;
+  cancelado_em: string | null;
+  motivo_cancelamento: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+}
+
+export type OrcamentoCampos = Pick<Orcamento,
+  "client_id" | "campaign_id" | "mes_referencia" | "titulo" | "instrucoes_cliente" | "responsavel_id">;
+
+export interface LinhaOrcamento {
+  id: string;
+  version_id: string;
+  plataforma: string;
+  descricao: string | null;
+  valor: number;
+  aliquota: number;
+  imposto: number;
+  verba: number;
+  ordem: number;
+  created_at: string;
+}
+
+export interface VersaoOrcamento {
+  id: string;
+  budget_id: string;
+  numero: number;
+  status: StatusVersaoOrcamento;
+  observacao: string | null;
+  enviado_em: string | null;
+  decidido_em: string | null;
+  created_at: string;
+  linhas: LinhaOrcamento[];
+}
+
+export interface DecisaoOrcamento {
+  id: number;
+  version_id: string;
+  budget_id: string;
+  decisao: "aprovado" | "alteracoes_solicitadas";
+  comentario: string | null;
+  total: number;
+  user_id: string | null;
+  user_email: string | null;
+  user_nome: string | null;
+  created_at: string;
+}
+
+/** Os status do orçamento são os mesmos da solicitação de criativos. */
+export const STATUS_ORCAMENTO = STATUS_SOLICITACAO;
+
+export const STATUS_VERSAO_ORCAMENTO: Record<StatusVersaoOrcamento, { rotulo: string; tom: "neutro" | "ok" | "atencao" | "alerta" | "info" }> = {
+  rascunho: { rotulo: "Não enviada", tom: "neutro" },
+  pendente: { rotulo: "Aguardando decisão", tom: "atencao" },
+  aprovado: { rotulo: "Aprovada", tom: "ok" },
+  alteracoes_solicitadas: { rotulo: "Alterações pedidas", tom: "alerta" },
+  substituida: { rotulo: "Substituída", tom: "neutro" },
+};

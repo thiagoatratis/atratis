@@ -2,6 +2,7 @@
 import type { EventoAuditoria, Profile } from "../types";
 import { PERFIL_ROTULO } from "../types";
 import { formatarCEP, formatarCNPJ } from "./format";
+import { formatarMes, formatarMoeda } from "./dinheiro";
 
 const CAMPOS: Record<string, string> = {
   nome_comercial: "nome comercial",
@@ -32,6 +33,9 @@ const CAMPOS: Record<string, string> = {
   formato: "formato",
   descricao: "descrição",
   link_url: "link",
+  mes_referencia: "mês de referência",
+  plataforma: "plataforma",
+  valor: "valor",
 };
 
 function valor(campo: string, v: unknown): string {
@@ -43,6 +47,8 @@ function valor(campo: string, v: unknown): string {
   if (campo === "cep") return formatarCEP(String(v));
   if (campo === "observacoes_internas" || campo === "instrucoes_cliente" || campo === "descricao") return "texto atualizado";
   if (campo.endsWith("_id")) return "outro valor";
+  if (campo === "mes_referencia") return formatarMes(String(v));
+  if (campo === "valor" && !Number.isNaN(Number(v))) return formatarMoeda(Number(v));
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return String(v).split("-").reverse().join("/");
   return String(v);
 }
@@ -136,6 +142,46 @@ export function descrever(e: EventoAuditoria, pessoas: Map<string, Pick<Profile,
       return {
         titulo: reg.decisao === "aprovado" ? `Peça aprovada por ${String(reg.user_nome || reg.user_email || "cliente")}` : `Alteração pedida por ${String(reg.user_nome || reg.user_email || "cliente")}`,
         detalhes: reg.comentario ? [`"${String(reg.comentario)}"`] : [],
+      };
+    case "orcamento.criado":
+      return { titulo: `Orçamento criado: ${formatarMes(String(reg.mes_referencia ?? ""))}${reg.titulo ? ` (${String(reg.titulo)})` : ""}`, detalhes: [] };
+    case "orcamento.alterado": {
+      const st = alt.status?.para as string | undefined;
+      const frases: Record<string, string> = {
+        aguardando_aprovacao: "Orçamento enviado ao cliente",
+        em_analise: "Cliente abriu o orçamento",
+        alteracoes_solicitadas: "Cliente pediu alterações no orçamento",
+        em_revisao_interna: "Orçamento voltou para revisão interna",
+        aprovado: "Orçamento aprovado pelo cliente",
+        cancelado: "Orçamento cancelado",
+      };
+      if (st && frases[st]) return { titulo: frases[st], detalhes: mudancas.filter((m) => !/^Status|^Enviado|^Visualizado|^Concluido|^Cancelado/i.test(m)) };
+      return { titulo: "Dados do orçamento alterados", detalhes: mudancas };
+    }
+    case "orcamento.observacoes.criado":
+    case "orcamento.observacoes.alterado":
+      return { titulo: "Observações internas do orçamento atualizadas", detalhes: [] };
+    case "orcamento.versao.criado":
+      return { titulo: `Versão ${String(reg.numero ?? "")} do orçamento criada`, detalhes: reg.observacao ? [String(reg.observacao)] : [] };
+    case "orcamento.versao.alterado": {
+      const st = alt.status?.para as string | undefined;
+      if (st === "pendente") return { titulo: "Versão do orçamento enviada ao cliente", detalhes: [] };
+      if (st === "substituida") return { titulo: "Versão do orçamento substituída antes da decisão", detalhes: [] };
+      if (st === "aprovado" || st === "alteracoes_solicitadas") return { titulo: "Versão do orçamento decidida pelo cliente", detalhes: [] };
+      return { titulo: "Versão do orçamento alterada", detalhes: mudancas };
+    }
+    case "orcamento.linha.criado":
+      return { titulo: `Linha adicionada: ${String(reg.plataforma ?? "")}${reg.descricao ? `, ${String(reg.descricao)}` : ""}`, detalhes: [valor("valor", reg.valor)] };
+    case "orcamento.linha.alterado":
+      return { titulo: "Linha do orçamento alterada", detalhes: mudancas.filter((m) => !/^Imposto|^Verba|^Aliquota|^Ordem/i.test(m)) };
+    case "orcamento.linha.removido":
+      return { titulo: `Linha removida: ${String(reg.plataforma ?? "")}${reg.descricao ? `, ${String(reg.descricao)}` : ""}`, detalhes: [valor("valor", reg.valor)] };
+    case "orcamento.decisao.criado":
+      return {
+        titulo: reg.decisao === "aprovado"
+          ? `Orçamento aprovado por ${String(reg.user_nome || reg.user_email || "cliente")}`
+          : `Alteração no orçamento pedida por ${String(reg.user_nome || reg.user_email || "cliente")}`,
+        detalhes: [`Total ${valor("valor", reg.total)}`, ...(reg.comentario ? [`"${String(reg.comentario)}"`] : [])],
       };
     case "comentario.criado":
       return { titulo: `Comentário de ${String(reg.autor_nome ?? "")}`, detalhes: [String(reg.corpo ?? "").slice(0, 280)] };

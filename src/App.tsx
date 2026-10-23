@@ -15,6 +15,9 @@ import { Portal } from "./pages/Portal";
 import { Criativos } from "./pages/Criativos";
 import { SolicitacaoDetalhe } from "./pages/SolicitacaoDetalhe";
 import { AprovacaoCliente } from "./pages/AprovacaoCliente";
+import { Orcamentos } from "./pages/Orcamentos";
+import { OrcamentoDetalhe } from "./pages/OrcamentoDetalhe";
+import { AprovacaoOrcamento } from "./pages/AprovacaoOrcamento";
 import { NaoConfigurado, NaoEncontrada, SemAcesso } from "./pages/Avisos";
 
 function Redirecionar({ para }: { para: string }) {
@@ -37,6 +40,8 @@ function RotasInternas() {
   else if ((m = matchPath("/criativos/:id", path))) pagina = <SolicitacaoDetalhe key={m.id} id={m.id} />;
   // Link do cliente aberto por alguém da equipe: leva para a mesma solicitação na visão interna.
   else if ((m = matchPath("/aprovacoes/:id", path))) pagina = <Redirecionar para={`/criativos/${m.id}`} />;
+  else if (path === "/orcamentos") pagina = <Orcamentos />;
+  else if ((m = matchPath("/orcamentos/:id", path))) pagina = <OrcamentoDetalhe key={m.id} id={m.id} />;
   else if (path === "/perfil") pagina = <MeuPerfil />;
   else if (admin && path === "/usuarios") pagina = <Usuarios />;
   else if (admin && path === "/historico") pagina = <Historico />;
@@ -52,6 +57,8 @@ function RotasCliente() {
   let m: Record<string, string> | null;
   if (path === "/") pagina = <Portal />;
   else if ((m = matchPath("/aprovacoes/:id", path))) pagina = <AprovacaoCliente key={m.id} id={m.id} />;
+  // O mesmo endereço do orçamento abre a visão interna para a equipe e a aprovação para o cliente.
+  else if ((m = matchPath("/orcamentos/:id", path))) pagina = <AprovacaoOrcamento key={m.id} id={m.id} />;
   else if (path === "/perfil") pagina = <MeuPerfil />;
   else pagina = <NaoEncontrada inicio="/" />;
   return <ShellCliente>{pagina}</ShellCliente>;
