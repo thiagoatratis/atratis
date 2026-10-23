@@ -43,7 +43,7 @@ export async function contarPaginas(arquivo: File): Promise<number> {
   try {
     return doc.numPages;
   } finally {
-    void doc.destroy();
+    void doc.loadingTask.destroy();
   }
 }
 
@@ -119,5 +119,5 @@ export function fecharPdf(doc: DocumentoPdf): void {
   for (const url of urlsCriadas.get(doc) ?? []) URL.revokeObjectURL(url);
   urlsCriadas.delete(doc);
   cache.delete(doc);
-  void doc.destroy();
+  void doc.loadingTask.destroy();
 }
