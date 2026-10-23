@@ -53,6 +53,15 @@ select tests.ok(exists (select 1 from public.clients where nome_comercial = 'Cli
 select tests.ok((select created_by from public.clients where nome_comercial = 'Cliente Teste Admin') = tests.id('admin'),
   'cliente registra quem cadastrou');
 
+-- O site grava com INSERT ... RETURNING (supabase .insert().select()): a linha
+-- nova precisa passar pela política de leitura no mesmo comando.
+do $$
+declare v_id uuid;
+begin
+  insert into public.clients (nome_comercial) values ('Cliente Pelo Site') returning id into v_id;
+  perform tests.ok(v_id is not null, 'admin cadastra cliente como o site faz (insert com returning)');
+end $$;
+
 update public.clients set razao_social = 'Nortis Energia LTDA' where id = tests.id('nortis');
 select tests.ok(exists (
   select 1 from public.audit_log
