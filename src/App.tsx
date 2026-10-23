@@ -19,6 +19,9 @@ import { AprovacaoCliente } from "./pages/AprovacaoCliente";
 import { Orcamentos } from "./pages/Orcamentos";
 import { OrcamentoDetalhe } from "./pages/OrcamentoDetalhe";
 import { AprovacaoOrcamento } from "./pages/AprovacaoOrcamento";
+import { Planos } from "./pages/Planos";
+import { PlanoDetalhe } from "./pages/PlanoDetalhe";
+import { AprovacaoPlano } from "./pages/AprovacaoPlano";
 import { NaoConfigurado, NaoEncontrada, SemAcesso } from "./pages/Avisos";
 
 function Redirecionar({ para }: { para: string }) {
@@ -43,6 +46,8 @@ function RotasInternas() {
   else if ((m = matchPath("/aprovacoes/:id", path))) pagina = <Redirecionar para={`/criativos/${m.id}`} />;
   else if (path === "/orcamentos") pagina = <Orcamentos />;
   else if ((m = matchPath("/orcamentos/:id", path))) pagina = <OrcamentoDetalhe key={m.id} id={m.id} />;
+  else if (path === "/planos") pagina = <Planos />;
+  else if ((m = matchPath("/planos/:id", path))) pagina = <PlanoDetalhe key={m.id} id={m.id} />;
   else if (path === "/perfil") pagina = <MeuPerfil />;
   else if (admin && path === "/usuarios") pagina = <Usuarios />;
   else if (admin && path === "/historico") pagina = <Historico />;
@@ -60,6 +65,7 @@ function RotasCliente() {
   else if ((m = matchPath("/aprovacoes/:id", path))) pagina = <AprovacaoCliente key={m.id} id={m.id} />;
   // O mesmo endereço do orçamento abre a visão interna para a equipe e a aprovação para o cliente.
   else if ((m = matchPath("/orcamentos/:id", path))) pagina = <AprovacaoOrcamento key={m.id} id={m.id} />;
+  else if ((m = matchPath("/planos/:id", path))) pagina = <AprovacaoPlano key={m.id} id={m.id} />;
   else if (path === "/perfil") pagina = <MeuPerfil />;
   else pagina = <NaoEncontrada inicio="/" />;
   return <ShellCliente>{pagina}</ShellCliente>;

@@ -1,5 +1,6 @@
 // Transforma eventos da auditoria em frases legíveis.
 import type { EventoAuditoria, Profile } from "../types";
+import { slidesCitados } from "./planos";
 import { PERFIL_ROTULO } from "../types";
 import { formatarCEP, formatarCNPJ } from "./format";
 import { formatarMes, formatarMoeda } from "./dinheiro";
@@ -192,6 +193,40 @@ export function descrever(e: EventoAuditoria, pessoas: Map<string, Pick<Profile,
       if (alt.status?.para === "cancelado") return { titulo: "P.I. cancelado", detalhes: [] };
       if (alt.pdf_path) return { titulo: "PDF do P.I. gerado", detalhes: [] };
       return { titulo: "P.I. alterado", detalhes: [] };
+    case "plano.criado":
+      return { titulo: `Plano criado: ${String(reg.titulo ?? "")}`, detalhes: [] };
+    case "plano.alterado": {
+      const st = alt.status?.para as string | undefined;
+      const frases: Record<string, string> = {
+        aguardando_aprovacao: "Plano enviado ao cliente",
+        em_analise: "Cliente abriu o plano",
+        ajustes_solicitados: "Cliente pediu ajustes no plano",
+        em_revisao_interna: "Plano voltou para revisão interna",
+        aprovado: "Plano aprovado pelo cliente",
+        cancelado: "Plano cancelado",
+      };
+      if (st && frases[st]) return { titulo: frases[st], detalhes: mudancas.filter((m) => !/^Status|^Enviado|^Visualizado|^Concluido|^Cancelado/i.test(m)) };
+      return { titulo: "Dados do plano alterados", detalhes: mudancas };
+    }
+    case "plano.versao.criado":
+      return { titulo: `Versão ${String(reg.numero ?? "")} do plano criada`, detalhes: reg.observacao ? [String(reg.observacao)] : [] };
+    case "plano.versao.alterado": {
+      const st = alt.status?.para as string | undefined;
+      if (st === "pendente") return { titulo: "Versão do plano enviada ao cliente", detalhes: [] };
+      if (st === "substituida") return { titulo: "Versão do plano substituída antes de o cliente terminar", detalhes: [] };
+      if (st === "concluida") return { titulo: "Cliente terminou de decidir as seções do plano", detalhes: [] };
+      if (alt.pdf_path) return { titulo: `PDF do plano enviado (${String(alt.paginas?.para ?? "")} slides)`, detalhes: [] };
+      return { titulo: "Versão do plano alterada", detalhes: mudancas.filter((m) => !/^Pdf/i.test(m)) };
+    }
+    case "plano.decisao.criado": {
+      const slides = Array.isArray(reg.slides) && reg.slides.length ? ` (${slidesCitados(reg.slides as number[])})` : "";
+      return {
+        titulo: reg.decisao === "aprovada"
+          ? `Seção "${String(reg.secao_nome ?? "")}" aprovada por ${String(reg.user_nome || reg.user_email || "cliente")}`
+          : `Ajuste na seção "${String(reg.secao_nome ?? "")}" pedido por ${String(reg.user_nome || reg.user_email || "cliente")}${slides}`,
+        detalhes: reg.comentario ? [`"${String(reg.comentario)}"`] : [],
+      };
+    }
     case "comentario.criado":
       return { titulo: `Comentário de ${String(reg.autor_nome ?? "")}`, detalhes: [String(reg.corpo ?? "").slice(0, 280)] };
     default:

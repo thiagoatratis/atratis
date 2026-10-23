@@ -25,25 +25,25 @@ select tests.ok((select count(*) from public.budget_versions where budget_id = '
 
 do $$ begin
   insert into public.budgets (client_id, mes_referencia) values (tests.id('nortis'), '2026-11-15');
-  raise exception 'FALHOU: aceitou mês de referência fora do dia 1';
+  raise exception 'FALHOU: aceitou mês de referência fora do dia 1' using errcode = 'TF001';
 exception when check_violation then raise notice 'ok  mês de referência é sempre o dia 1';
 end $$;
 
 do $$ begin
   insert into public.budgets (client_id, mes_referencia) values (tests.id('dasart'), '2026-11-01');
-  raise exception 'FALHOU: criou orçamento de cliente sem acesso';
+  raise exception 'FALHOU: criou orçamento de cliente sem acesso' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  equipe não cria orçamento de cliente sem acesso';
 end $$;
 
 do $$ begin
   update public.budgets set client_id = tests.id('dasart') where id = '20000000-0000-0000-0000-000000000001';
-  raise exception 'FALHOU: trocou o cliente do orçamento';
+  raise exception 'FALHOU: trocou o cliente do orçamento' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  cliente do orçamento não muda';
 end $$;
 
 do $$ begin
   insert into public.budget_versions (budget_id, numero) values ('20000000-0000-0000-0000-000000000001', 2);
-  raise exception 'FALHOU: criou versão direto na tabela';
+  raise exception 'FALHOU: criou versão direto na tabela' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  versão nova só pela função de fluxo';
 end $$;
 
@@ -67,13 +67,13 @@ select tests.ok((select aliquota = 0 and imposto = 0 and verba = 500.00
 do $$ begin
   insert into public.budget_lines (version_id, plataforma, valor)
   select v.id, 'TikTok Ads', 0 from public.budget_versions v where v.budget_id = '20000000-0000-0000-0000-000000000001';
-  raise exception 'FALHOU: aceitou linha com valor zero';
+  raise exception 'FALHOU: aceitou linha com valor zero' using errcode = 'TF001';
 exception when check_violation then raise notice 'ok  linha precisa de valor maior que zero';
 end $$;
 
 do $$ begin
   update public.budgets set status = 'aprovado' where id = '20000000-0000-0000-0000-000000000001';
-  raise exception 'FALHOU: equipe mudou status direto';
+  raise exception 'FALHOU: equipe mudou status direto' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  status não muda direto na tabela';
 end $$;
 reset role;
@@ -88,7 +88,7 @@ select tests.ok((select count(*) from public.budget_lines) = 0, 'cliente não v�
 select tests.ok((select count(*) from public.budget_internal) = 0, 'cliente não vê observações internas');
 do $$ begin
   perform public.enviar_orcamento('20000000-0000-0000-0000-000000000001');
-  raise exception 'FALHOU: cliente enviou orçamento';
+  raise exception 'FALHOU: cliente enviou orçamento' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  cliente não envia orçamento';
 end $$;
 reset role;
@@ -98,7 +98,7 @@ set role authenticated;
 select tests.ok((select count(*) from public.budgets) = 0, 'equipe sem acesso ao cliente não vê o orçamento');
 do $$ begin
   perform public.enviar_orcamento('20000000-0000-0000-0000-000000000001');
-  raise exception 'FALHOU: equipe sem acesso enviou';
+  raise exception 'FALHOU: equipe sem acesso enviou' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  equipe sem acesso não envia';
 end $$;
 reset role;
@@ -116,17 +116,17 @@ select tests.ok((select status = 'pendente' and enviado_em is not null from publ
 
 do $$ begin
   update public.budget_lines set valor = 900 where id = '20000000-0000-0000-0000-0000000000a1';
-  raise exception 'FALHOU: alterou valor de versão enviada';
+  raise exception 'FALHOU: alterou valor de versão enviada' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  valor de versão enviada não muda';
 end $$;
 do $$ begin
   delete from public.budget_lines where id = '20000000-0000-0000-0000-0000000000a2';
-  raise exception 'FALHOU: apagou linha de versão enviada';
+  raise exception 'FALHOU: apagou linha de versão enviada' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  linha de versão enviada não é apagada';
 end $$;
 do $$ begin
   perform public.enviar_orcamento('20000000-0000-0000-0000-000000000001');
-  raise exception 'FALHOU: reenviou sem versão nova';
+  raise exception 'FALHOU: reenviou sem versão nova' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  não reenvia a mesma versão';
 end $$;
 reset role;
@@ -136,7 +136,7 @@ set role authenticated;
 select tests.ok((select count(*) from public.budgets) = 0, 'cliente de outra empresa não vê o orçamento');
 do $$ begin
   perform public.decidir_orcamento('20000000-0000-0000-0000-000000000001', 'aprovado');
-  raise exception 'FALHOU: outra empresa aprovou';
+  raise exception 'FALHOU: outra empresa aprovou' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  outra empresa não aprova';
 end $$;
 reset role;
@@ -146,7 +146,7 @@ set role authenticated;
 select tests.ok((select count(*) from public.budget_lines) = 2, 'visualizador vê as linhas enviadas');
 do $$ begin
   perform public.decidir_orcamento('20000000-0000-0000-0000-000000000001', 'aprovado');
-  raise exception 'FALHOU: visualizador aprovou';
+  raise exception 'FALHOU: visualizador aprovou' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  visualizador não aprova';
 end $$;
 reset role;
@@ -160,14 +160,14 @@ select tests.ok((select count(*) from public.budget_internal) = 0, 'cliente cont
 do $$ begin
   update public.budget_lines set valor = 1 where id = '20000000-0000-0000-0000-0000000000a1';
   if exists (select 1 from public.budget_lines where valor = 1) then
-    raise exception 'FALHOU: cliente alterou valor';
+    raise exception 'FALHOU: cliente alterou valor' using errcode = 'TF001';
   end if;
   raise notice 'ok  cliente não altera valores';
 exception when insufficient_privilege then raise notice 'ok  cliente não altera valores';
 end $$;
 do $$ begin
   perform public.decidir_orcamento('20000000-0000-0000-0000-000000000001', 'alteracoes_solicitadas', '');
-  raise exception 'FALHOU: pediu alteração sem comentário';
+  raise exception 'FALHOU: pediu alteração sem comentário' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  pedido de alteração exige comentário';
 end $$;
 select tests.ok(public.decidir_orcamento('20000000-0000-0000-0000-000000000001', 'alteracoes_solicitadas',
@@ -178,7 +178,7 @@ select tests.ok((select total = 1600.00 and comentario = 'Reduzir Google para R$
   'decisão guarda o total da versão e o comentário');
 do $$ begin
   perform public.decidir_orcamento('20000000-0000-0000-0000-000000000001', 'aprovado');
-  raise exception 'FALHOU: decidiu duas vezes';
+  raise exception 'FALHOU: decidiu duas vezes' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  não decide de novo a mesma versão';
 end $$;
 do $$ begin
@@ -202,7 +202,7 @@ select tests.ok((select count(*) from public.budget_lines l join public.budget_v
   'versão nova começa com as linhas da anterior');
 do $$ begin
   perform public.nova_versao_orcamento('20000000-0000-0000-0000-000000000001');
-  raise exception 'FALHOU: criou segundo rascunho';
+  raise exception 'FALHOU: criou segundo rascunho' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  só um rascunho por vez';
 end $$;
 update public.budget_lines l set valor = 300
@@ -244,7 +244,7 @@ do $$ begin
   insert into public.budget_lines (version_id, plataforma, valor)
   select v.id, 'Meta Ads', 10 from public.budget_versions v
    where v.budget_id = '20000000-0000-0000-0000-000000000001' and v.numero = 4;
-  raise exception 'FALHOU: incluiu linha em orçamento cancelado';
+  raise exception 'FALHOU: incluiu linha em orçamento cancelado' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  orçamento cancelado não muda';
 end $$;
 reset role;
@@ -253,7 +253,7 @@ select tests.login('cli_nortis');
 set role authenticated;
 do $$ begin
   perform public.decidir_orcamento('20000000-0000-0000-0000-000000000001', 'aprovado');
-  raise exception 'FALHOU: aprovou orçamento cancelado';
+  raise exception 'FALHOU: aprovou orçamento cancelado' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  orçamento cancelado não é aprovado';
 end $$;
 reset role;

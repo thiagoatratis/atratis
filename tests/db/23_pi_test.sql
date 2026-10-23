@@ -44,13 +44,13 @@ select tests.login('equipe1');
 set role authenticated;
 do $$ begin
   perform public.emitir_pis('30000000-0000-0000-0000-000000000002', false, (select d from dados_pi));
-  raise exception 'FALHOU: emitiu P.I. de orçamento não aprovado';
+  raise exception 'FALHOU: emitiu P.I. de orçamento não aprovado' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  P.I. só sai de orçamento aprovado';
 end $$;
 do $$ begin
   perform public.emitir_pis('30000000-0000-0000-0000-000000000001', false,
     (select d || '{"faturamento":"talvez"}' from dados_pi));
-  raise exception 'FALHOU: aceitou forma de faturamento inválida';
+  raise exception 'FALHOU: aceitou forma de faturamento inválida' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  forma de faturamento precisa ser bruto ou líquido';
 end $$;
 do $$ begin
@@ -60,7 +60,7 @@ do $$ begin
          'bruto', 'cliente', '{}', '{}'
     from public.budgets b join public.budget_versions v on v.budget_id = b.id
    where b.id = '30000000-0000-0000-0000-000000000001';
-  raise exception 'FALHOU: criou P.I. direto na tabela';
+  raise exception 'FALHOU: criou P.I. direto na tabela' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  P.I. só nasce pela função de emissão';
 end $$;
 reset role;
@@ -69,7 +69,7 @@ select tests.login('equipe2');
 set role authenticated;
 do $$ begin
   perform public.emitir_pis('30000000-0000-0000-0000-000000000001', false, (select d from dados_pi));
-  raise exception 'FALHOU: equipe sem acesso emitiu';
+  raise exception 'FALHOU: equipe sem acesso emitiu' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  equipe sem acesso ao cliente não emite';
 end $$;
 reset role;
@@ -78,7 +78,7 @@ select tests.login('cli_nortis');
 set role authenticated;
 do $$ begin
   perform public.emitir_pis('30000000-0000-0000-0000-000000000001', false, (select d from dados_pi));
-  raise exception 'FALHOU: cliente emitiu';
+  raise exception 'FALHOU: cliente emitiu' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  cliente não emite P.I.';
 end $$;
 reset role;
@@ -107,7 +107,7 @@ select tests.ok((select string_agg(numero || '=' || plataforma || ':' || valor, 
 
 do $$ begin
   update public.insertion_orders set valor = 1 where plataforma = 'Meta Ads';
-  raise exception 'FALHOU: alterou P.I. emitido';
+  raise exception 'FALHOU: alterou P.I. emitido' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  P.I. emitido não é alterado';
 end $$;
 reset role;
@@ -129,14 +129,14 @@ insert into storage.objects (bucket_id, name)
 select 'pis', client_id || '/' || id || '.pdf' from public.insertion_orders where sequencia = 1;
 do $$ begin
   insert into storage.objects (bucket_id, name) values ('pis', tests.id('nortis') || '/qualquer.pdf');
-  raise exception 'FALHOU: enviou PDF com nome solto';
+  raise exception 'FALHOU: enviou PDF com nome solto' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  PDF só com o nome do P.I.';
 end $$;
 select public.registrar_pdf_pi(id, client_id || '/' || id || '.pdf') from public.insertion_orders where sequencia = 1;
 select tests.ok((select pdf_path is not null from public.insertion_orders where sequencia = 1), 'caminho do PDF registrado');
 do $$ begin
   perform public.registrar_pdf_pi(id, 'outro/caminho.pdf') from public.insertion_orders where sequencia = 2;
-  raise exception 'FALHOU: aceitou caminho de PDF inválido';
+  raise exception 'FALHOU: aceitou caminho de PDF inválido' using errcode = 'TF001';
 exception when invalid_parameter_value then raise notice 'ok  caminho do PDF precisa ser o do P.I.';
 end $$;
 reset role;
@@ -151,12 +151,12 @@ select tests.ok((select count(*) from storage.objects where bucket_id = 'pis') =
 do $$ begin
   insert into storage.objects (bucket_id, name)
   select 'pis', client_id || '/' || id || '.pdf' from public.insertion_orders where sequencia = 2;
-  raise exception 'FALHOU: cliente enviou PDF';
+  raise exception 'FALHOU: cliente enviou PDF' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  cliente não envia PDF';
 end $$;
 do $$ begin
   perform public.cancelar_pi(id, 'Não quero') from public.insertion_orders where sequencia = 2;
-  raise exception 'FALHOU: cliente cancelou P.I.';
+  raise exception 'FALHOU: cliente cancelou P.I.' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  cliente não cancela P.I.';
 end $$;
 reset role;

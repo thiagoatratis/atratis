@@ -324,3 +324,99 @@ export interface CamposEmissaoPI {
   observacoes: string | null;
   observacao_faturamento: string | null;
 }
+
+// ---------------- Etapa 5: plano de comunicação ----------------
+
+type Tom = "neutro" | "ok" | "atencao" | "alerta" | "info";
+
+export type StatusPlano =
+  | "rascunho" | "aguardando_aprovacao" | "em_analise" | "ajustes_solicitados"
+  | "em_revisao_interna" | "aprovado" | "cancelado";
+export type StatusVersaoPlano = "rascunho" | "pendente" | "concluida" | "substituida";
+export type StatusSecaoPlano = "rascunho" | "pendente" | "aprovada" | "ajuste_solicitado" | "informativa";
+
+export const STATUS_PLANO: Record<StatusPlano, { rotulo: string; rotuloCliente: string; tom: Tom }> = {
+  rascunho: { rotulo: "Rascunho", rotuloCliente: "Rascunho", tom: "neutro" },
+  aguardando_aprovacao: { rotulo: "Aguardando aprovação", rotuloCliente: "Aguardando sua aprovação", tom: "atencao" },
+  em_analise: { rotulo: "Em análise pelo cliente", rotuloCliente: "Em análise", tom: "info" },
+  ajustes_solicitados: { rotulo: "Ajustes solicitados", rotuloCliente: "Ajustes pedidos", tom: "alerta" },
+  em_revisao_interna: { rotulo: "Em revisão interna", rotuloCliente: "Em ajuste pela Atratis", tom: "info" },
+  aprovado: { rotulo: "Aprovado", rotuloCliente: "Aprovado", tom: "ok" },
+  cancelado: { rotulo: "Cancelado", rotuloCliente: "Cancelado", tom: "neutro" },
+};
+
+export const STATUS_VERSAO_PLANO: Record<StatusVersaoPlano, { rotulo: string; tom: Tom }> = {
+  rascunho: { rotulo: "Não enviada", tom: "neutro" },
+  pendente: { rotulo: "Com o cliente", tom: "atencao" },
+  concluida: { rotulo: "Decidida", tom: "ok" },
+  substituida: { rotulo: "Substituída", tom: "neutro" },
+};
+
+export const STATUS_SECAO: Record<StatusSecaoPlano, { rotulo: string; tom: Tom }> = {
+  rascunho: { rotulo: "Não enviada", tom: "neutro" },
+  pendente: { rotulo: "Aguardando decisão", tom: "atencao" },
+  aprovada: { rotulo: "Aprovada", tom: "ok" },
+  ajuste_solicitado: { rotulo: "Ajuste pedido", tom: "alerta" },
+  informativa: { rotulo: "Informativa", tom: "neutro" },
+};
+
+export interface Plano {
+  id: string;
+  client_id: string;
+  titulo: string;
+  instrucoes_cliente: string | null;
+  responsavel_id: string | null;
+  status: StatusPlano;
+  enviado_em: string | null;
+  visualizado_em: string | null;
+  concluido_em: string | null;
+  cancelado_em: string | null;
+  motivo_cancelamento: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+}
+
+export type PlanoCampos = Pick<Plano, "client_id" | "titulo" | "instrucoes_cliente" | "responsavel_id">;
+
+export interface SecaoPlano {
+  id: string;
+  version_id: string;
+  ordem: number;
+  nome: string;
+  pagina_inicio: number;
+  pagina_fim: number;
+  requer_aprovacao: boolean;
+  mantem_aprovacao_de: string | null;
+  status: StatusSecaoPlano;
+  decidido_em: string | null;
+}
+
+export interface VersaoPlano {
+  id: string;
+  plan_id: string;
+  numero: number;
+  status: StatusVersaoPlano;
+  observacao: string | null;
+  pdf_path: string | null;
+  paginas: number | null;
+  enviado_em: string | null;
+  decidido_em: string | null;
+  created_at: string;
+  secoes: SecaoPlano[];
+}
+
+export interface DecisaoSecaoPlano {
+  id: number;
+  section_id: string;
+  version_id: string;
+  plan_id: string;
+  secao_nome: string;
+  decisao: "aprovada" | "ajuste_solicitado";
+  comentario: string | null;
+  slides: number[];
+  user_id: string | null;
+  user_email: string | null;
+  user_nome: string | null;
+  created_at: string;
+}
