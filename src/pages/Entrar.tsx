@@ -51,7 +51,7 @@ export function Entrar() {
   async function pedirCodigo(): Promise<boolean> {
     const { error } = await supabase.auth.signInWithOtp({
       email: alvo,
-      options: { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}/` },
+      options: { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}${window.location.pathname}` },
     });
     // Por segurança, a resposta é a mesma para e-mail cadastrado ou não,
     // exceto quando o limite de envios foi atingido.

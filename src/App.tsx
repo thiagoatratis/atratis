@@ -35,6 +35,8 @@ function RotasInternas() {
   else if ((m = matchPath("/clientes/:id", path))) pagina = <ClienteDetalhe key={m.id} id={m.id} />;
   else if (path === "/criativos") pagina = <Criativos />;
   else if ((m = matchPath("/criativos/:id", path))) pagina = <SolicitacaoDetalhe key={m.id} id={m.id} />;
+  // Link do cliente aberto por alguém da equipe: leva para a mesma solicitação na visão interna.
+  else if ((m = matchPath("/aprovacoes/:id", path))) pagina = <Redirecionar para={`/criativos/${m.id}`} />;
   else if (path === "/perfil") pagina = <MeuPerfil />;
   else if (admin && path === "/usuarios") pagina = <Usuarios />;
   else if (admin && path === "/historico") pagina = <Historico />;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { LuArrowLeft, LuPencil, LuPlus, LuSend, LuUpload } from "react-icons/lu";
+import { LuArrowLeft, LuCopy, LuLink, LuPencil, LuPlus, LuSend, LuUpload } from "react-icons/lu";
 import { useAsync } from "../lib/useAsync";
 import { listarClientes, listarUsuarios } from "../lib/api";
 import {
@@ -40,6 +40,7 @@ export function SolicitacaoDetalhe({ id }: { id: string }) {
   const [novaPeca, setNovaPeca] = useState(false);
   const [cancelando, setCancelando] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [avisarCliente, setAvisarCliente] = useState(false);
 
   if (dados.loading && !dados.data) return <Carregando />;
   if (dados.error) return <AvisoErro erro={dados.error} tentarDeNovo={dados.reload} />;
@@ -64,6 +65,7 @@ export function SolicitacaoDetalhe({ id }: { id: string }) {
       const novo = await enviarSolicitacao(s.id);
       avisar(`Enviado ao cliente. Status: ${STATUS_SOLICITACAO[novo].rotulo.toLowerCase()}.`);
       await dados.reload();
+      setAvisarCliente(true);
     } catch (e) {
       avisar(e instanceof Error ? e.message : String(e), "erro");
     } finally {
@@ -80,6 +82,7 @@ export function SolicitacaoDetalhe({ id }: { id: string }) {
         acoes={editavel && (
           <>
             <Botao onClick={() => setEditando(true)}><LuPencil /> Editar dados</Botao>
+            {s.enviado_em && <Botao onClick={() => setAvisarCliente(true)}><LuLink /> Link para o cliente</Botao>}
             <Botao variante="primario" disabled={!podeEnviar} carregando={enviando} onClick={() => void enviar()}
               title={podeEnviar ? undefined : novas === 0 ? "Adicione uma peça ou versão nova para enviar." : "Há peças com alterações pedidas."}>
               <LuSend /> {s.enviado_em ? "Reenviar ao cliente" : "Enviar ao cliente"}{novas > 0 ? ` (${novas})` : ""}
@@ -87,6 +90,8 @@ export function SolicitacaoDetalhe({ id }: { id: string }) {
           </>
         )}
       />
+
+      <AvisarCliente aberto={avisarCliente} solicitacao={s} onFechar={() => setAvisarCliente(false)} />
 
       {s.status === "cancelado" && (
         <div className="aviso aviso-atencao"><p>Cancelada em {formatarDataHora(s.cancelado_em)}. Motivo: {s.motivo_cancelamento}</p></div>
@@ -478,6 +483,74 @@ function Cancelar({ aberto, requestId, onFechar, onPronto }: { aberto: boolean; 
         <p>O cliente continua vendo o histórico, mas não aprova mais nada nesta solicitação. Não dá para desfazer.</p>
         <CampoTexto rotulo="Motivo" rows={3} value={motivo} onChange={(e) => setMotivo(e.target.value)} erro={erro} />
       </div>
+    </Modal>
+  );
+}
+
+/** Endereço da página de aprovação que o cliente abre. */
+export function linkDoCliente(requestId: string): string {
+  return `${window.location.origin}/aprovacoes/${requestId}`;
+}
+
+async function copiarTexto(texto: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(texto);
+    return true;
+  } catch {
+    // Navegadores sem permissão de área de transferência: cópia pelo método antigo.
+    const area = document.createElement("textarea");
+    area.value = texto;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  }
+}
+
+function mensagemPadrao(s: Solicitacao, link: string): string {
+  const prazo = s.prazo_aprovacao ? ` até ${formatarData(s.prazo_aprovacao)}` : "";
+  return [
+    `Olá! Os criativos de "${s.titulo}" estão prontos para a sua aprovação${prazo}.`,
+    "",
+    `Acesse: ${link}`,
+    "",
+    "Se pedir para entrar, informe o seu e-mail e abra o link de acesso que chegar na sua caixa de entrada.",
+  ].join("\n");
+}
+
+/** O sistema não manda e-mail ao cliente: a equipe avisa com este link (decisão de 22/10/2026). */
+function AvisarCliente({ aberto, solicitacao, onFechar }: { aberto: boolean; solicitacao: Solicitacao; onFechar: () => void }) {
+  const avisar = useAviso();
+  const link = linkDoCliente(solicitacao.id);
+  const [texto, setTexto] = useState("");
+
+  useEffect(() => {
+    if (aberto) setTexto(mensagemPadrao(solicitacao, link));
+  }, [aberto, solicitacao, link]);
+
+  async function copiar(conteudo: string, oque: string) {
+    if (await copiarTexto(conteudo)) avisar(`${oque} copiado.`);
+    else avisar("Não deu para copiar. Selecione o texto e copie manualmente.", "erro");
+  }
+
+  return (
+    <Modal aberto={aberto} titulo="Avisar o cliente" onFechar={onFechar}
+      rodape={<>
+        <Botao onClick={onFechar}>Fechar</Botao>
+        <Botao onClick={() => void copiar(link, "Link")}><LuLink /> Copiar só o link</Botao>
+        <Botao variante="primario" onClick={() => void copiar(texto, "Mensagem")}><LuCopy /> Copiar mensagem</Botao>
+      </>}>
+      <p className="suave">
+        O sistema não manda e-mail ao cliente. Envie este link por WhatsApp ou e-mail. Só quem está cadastrado como
+        aprovador ou visualizador desta empresa consegue abrir.
+      </p>
+      <div className="link-cliente">
+        <code>{link}</code>
+      </div>
+      <CampoTexto rotulo="Mensagem" rows={7} value={texto} onChange={(e) => setTexto(e.target.value)} />
     </Modal>
   );
 }
