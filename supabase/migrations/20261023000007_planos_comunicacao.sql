@@ -140,7 +140,7 @@ language sql stable security definer set search_path = ''
 as $$
   select coalesce(private.current_app_role() = 'cliente', false)
      and exists (select 1 from public.plans p
-                 where p.id = p_plan and p.status <> 'rascunho' and p.enviado_em is not null
+                 where p.id = p_plan and p.status <> 'rascunho'
                    and private.has_client_access(p.client_id))
 $$;
 
@@ -158,24 +158,13 @@ to authenticated, service_role;
 -- Gatilhos
 -- ---------------------------------------------------------------------
 
--- Verdadeiro só dentro das funções de fluxo: elas ligam app.transicao e rodam
--- como dono do banco (security definer). Um usuário que ligasse a variável por
--- conta própria continua rodando como "authenticated" e é barrado.
-create or replace function private.em_transicao()
-returns boolean
-language sql stable set search_path = ''
-as $$
-  select coalesce(current_setting('app.transicao', true), '') = 'on'
-     and current_user not in ('authenticated', 'anon')
-$$;
-
 -- Plano: status e datas só mudam pelo fluxo; o cliente do plano não muda.
 create or replace function private.proteger_plano()
 returns trigger
 language plpgsql set search_path = ''
 as $$
 begin
-  if private.em_transicao() then
+  if coalesce(current_setting('app.transicao', true), '') = 'on' then
     return new;
   end if;
   if tg_op = 'INSERT' then
@@ -219,7 +208,7 @@ returns trigger
 language plpgsql set search_path = ''
 as $$
 begin
-  if private.em_transicao() then
+  if coalesce(current_setting('app.transicao', true), '') = 'on' then
     return coalesce(new, old);
   end if;
   if tg_op = 'INSERT' then
@@ -228,9 +217,8 @@ begin
   if tg_op = 'DELETE' then
     raise exception 'Versão de plano não pode ser apagada.' using errcode = '42501';
   end if;
-  -- Excluir do sistema quem criou a versão só limpa o autor (on delete set null,
-  -- que roda dentro de outro gatilho; um UPDATE direto não passa por aqui).
-  if pg_trigger_depth() > 1 and old.created_by is not null and new.created_by is null
+  -- Excluir do sistema quem criou a versão só limpa o autor (on delete set null).
+  if old.created_by is not null and new.created_by is null
      and (to_jsonb(new) - 'created_by' - 'updated_at') = (to_jsonb(old) - 'created_by' - 'updated_at') then
     return new;
   end if;
@@ -252,7 +240,7 @@ returns trigger
 language plpgsql set search_path = ''
 as $$
 begin
-  if private.em_transicao() then
+  if coalesce(current_setting('app.transicao', true), '') = 'on' then
     return coalesce(new, old);
   end if;
   raise exception 'Use as funções do plano para alterar este registro.' using errcode = '42501';
@@ -331,23 +319,6 @@ create trigger plan_decisions_audit after insert on public.plan_section_decision
 -- Funções de fluxo (chamadas pelo site via RPC)
 -- ---------------------------------------------------------------------
 
--- Aprovações que ainda valem antes da versão p_numero: as seções aprovadas da
--- última versão enviada, desde que a decisão seja final (versão concluída) ou
--- já fosse uma aprovação mantida. Devolve o id da aprovação original.
-create or replace function private.aprovacoes_em_vigor(p_plan uuid, p_numero integer)
-returns uuid[]
-language sql stable security definer set search_path = ''
-as $$
-  select coalesce(array_agg(coalesce(s.mantem_aprovacao_de, s.id)), '{}')
-    from public.plan_sections s
-    join public.plan_versions v on v.id = s.version_id
-   where v.id = (select pv.id from public.plan_versions pv
-                  where pv.plan_id = p_plan and pv.numero < p_numero and pv.status <> 'rascunho'
-                  order by pv.numero desc limit 1)
-     and s.status = 'aprovada'
-     and (v.status = 'concluida' or s.mantem_aprovacao_de is not null)
-$$;
-
 -- Confere se a versão atual do plano está em rascunho e devolve a versão.
 create or replace function private.rascunho_do_plano(p_version uuid)
 returns public.plan_versions
@@ -388,20 +359,16 @@ begin
     raise exception 'Caminho do PDF inválido.' using errcode = '22023';
   end if;
   if p_paginas is null or p_paginas < 1 or p_paginas > 500 then
-    raise exception 'O PDF precisa ter entre 1 e 500 slides.' using errcode = 'P0001';
+    raise exception 'O PDF precisa ter entre 1 e 500 páginas.' using errcode = 'P0001';
   end if;
   if not exists (select 1 from storage.objects o where o.bucket_id = 'planos' and o.name = p_path) then
     raise exception 'O PDF ainda não foi enviado.' using errcode = 'P0001';
   end if;
   perform set_config('app.transicao', 'on', true);
   update public.plan_versions set pdf_path = p_path, paginas = p_paginas where id = p_version;
-  -- Seções que passam do fim do PDF novo são descartadas e a última passa a ir
-  -- até o fim. Seção que muda de tamanho perde a aprovação mantida. A equipe revisa.
+  -- Seções que passam do fim do PDF novo são descartadas; a equipe revisa.
   delete from public.plan_sections where version_id = p_version and pagina_inicio > p_paginas;
-  update public.plan_sections s
-     set pagina_fim = p_paginas, mantem_aprovacao_de = null
-   where s.version_id = p_version and s.pagina_fim <> p_paginas
-     and s.ordem = (select max(o.ordem) from public.plan_sections o where o.version_id = p_version);
+  update public.plan_sections set pagina_fim = p_paginas where version_id = p_version and pagina_fim > p_paginas;
   perform set_config('app.transicao', '', true);
 end;
 $$;
@@ -423,7 +390,6 @@ declare
   v_requer boolean;
   v_mantem uuid;
   v_vistos uuid[] := '{}';
-  v_origem public.plan_sections%rowtype;
 begin
   v_v := private.rascunho_do_plano(p_version);
   if v_v.paginas is null then
@@ -454,25 +420,22 @@ begin
       raise exception 'Dê um nome à seção %.', v_ordem using errcode = 'P0001';
     end if;
     if v_ini is distinct from v_prox then
-      raise exception 'A seção "%" deveria começar no slide %.', v_nome, v_prox using errcode = 'P0001';
+      raise exception 'A seção "%" deveria começar na página %.', v_nome, v_prox using errcode = 'P0001';
     end if;
     if v_fim is null or v_fim < v_ini or v_fim > v_v.paginas then
-      raise exception 'A seção "%" termina num slide inválido.', v_nome using errcode = 'P0001';
+      raise exception 'A seção "%" termina numa página inválida.', v_nome using errcode = 'P0001';
     end if;
     if v_mantem is not null then
       if not v_requer then
         raise exception 'A seção "%" é informativa e não tem aprovação a manter.', v_nome using errcode = 'P0001';
       end if;
-      -- Só vale a aprovação em vigor na última versão enviada (decisão final do
-      -- cliente), uma vez por seção, com o mesmo nome e o mesmo número de slides.
-      if v_mantem = any (v_vistos) or v_mantem <> all (private.aprovacoes_em_vigor(v_v.plan_id, v_v.numero)) then
+      -- Só vale aprovação de versão anterior do mesmo plano, uma vez por seção.
+      if v_mantem = any (v_vistos) or not exists (
+           select 1 from public.plan_sections s
+           join public.plan_versions pv on pv.id = s.version_id
+           where s.id = v_mantem and s.status = 'aprovada'
+             and pv.plan_id = v_v.plan_id and pv.numero < v_v.numero) then
         raise exception 'A seção "%" não tem uma aprovação anterior válida para manter.', v_nome using errcode = 'P0001';
-      end if;
-      select * into v_origem from public.plan_sections where id = v_mantem;
-      if lower(btrim(v_origem.nome)) <> lower(v_nome)
-         or (v_origem.pagina_fim - v_origem.pagina_inicio) <> (v_fim - v_ini) then
-        raise exception 'A seção "%" mudou de nome ou de número de slides; ela precisa de nova aprovação.', v_nome
-          using errcode = 'P0001';
       end if;
       v_vistos := v_vistos || v_mantem;
     end if;
@@ -482,7 +445,7 @@ begin
   end loop;
 
   if v_prox <> v_v.paginas + 1 then
-    raise exception 'As seções precisam ir até o último slide (%).', v_v.paginas using errcode = 'P0001';
+    raise exception 'As seções precisam ir até a última página (%).', v_v.paginas using errcode = 'P0001';
   end if;
   perform set_config('app.transicao', '', true);
 end;
@@ -517,18 +480,11 @@ begin
   end if;
   select max(pagina_fim) into v_ultima from public.plan_sections where version_id = v_v.id;
   if v_ultima is distinct from v_v.paginas then
-    raise exception 'Marque as seções do plano até o último slide.' using errcode = 'P0001';
-  end if;
-  if exists (select 1 from public.plan_sections s join public.plan_sections o on o.id = s.mantem_aprovacao_de
-             where s.version_id = v_v.id
-               and (o.pagina_fim - o.pagina_inicio <> s.pagina_fim - s.pagina_inicio
-                    or lower(btrim(o.nome)) <> lower(btrim(s.nome)))) then
-    raise exception 'Uma seção com aprovação mantida mudou de nome ou de número de slides. Revise as seções.'
-      using errcode = 'P0001';
+    raise exception 'Marque as seções do plano até a última página.' using errcode = 'P0001';
   end if;
   if not exists (select 1 from public.plan_sections s
                  where s.version_id = v_v.id and s.requer_aprovacao and s.mantem_aprovacao_de is null) then
-    raise exception 'Nenhuma seção desta versão precisa de aprovação. Nas seções que mudaram, escolha "Mudou: precisa de nova aprovação".'
+    raise exception 'Nenhuma seção desta versão precisa de aprovação. Desmarque "manter aprovação" das seções que mudaram.'
       using errcode = 'P0001';
   end if;
 
@@ -583,10 +539,7 @@ begin
   returning id into v_nova;
   insert into public.plan_sections (version_id, ordem, nome, pagina_inicio, pagina_fim, requer_aprovacao, mantem_aprovacao_de)
   select v_nova, s.ordem, s.nome, s.pagina_inicio, s.pagina_fim, s.requer_aprovacao,
-         -- Aprovação dada numa versão que o cliente ainda não terminou não é final:
-         -- volta para ele decidir.
-         case when s.status = 'aprovada' and (v_atual.status = 'concluida' or s.mantem_aprovacao_de is not null)
-              then coalesce(s.mantem_aprovacao_de, s.id) end
+         case when s.status = 'aprovada' then coalesce(s.mantem_aprovacao_de, s.id) end
     from public.plan_sections s where s.version_id = v_atual.id;
   update public.plans set status = 'em_revisao_interna', concluido_em = null where id = p_plan;
   perform set_config('app.transicao', '', true);
@@ -671,8 +624,7 @@ begin
   if length(coalesce(p_comentario, '')) > 4000 then
     raise exception 'Comentário muito longo (máximo 4.000 caracteres).' using errcode = 'P0001';
   end if;
-  select coalesce(array_agg(distinct x order by x), '{}') into v_slides
-    from unnest(coalesce(p_slides, '{}')) x where x is not null;
+  select coalesce(array_agg(distinct x order by x), '{}') into v_slides from unnest(coalesce(p_slides, '{}')) x;
   if exists (select 1 from unnest(v_slides) x where x < v_s.pagina_inicio or x > v_s.pagina_fim) then
     raise exception 'Os slides citados precisam ser desta seção (% a %).', v_s.pagina_inicio, v_s.pagina_fim
       using errcode = 'P0001';
@@ -708,14 +660,13 @@ $$;
 revoke all on function public.definir_pdf_plano(uuid, text, integer), public.salvar_secoes_plano(uuid, jsonb),
   public.enviar_plano(uuid), public.nova_versao_plano(uuid, text), public.cancelar_plano(uuid, text),
   public.registrar_visualizacao_plano(uuid), public.decidir_secao_plano(uuid, text, text, integer[]),
-  private.rascunho_do_plano(uuid), private.aprovacoes_em_vigor(uuid, integer)
+  private.rascunho_do_plano(uuid)
 from public, anon;
 grant execute on function public.definir_pdf_plano(uuid, text, integer), public.salvar_secoes_plano(uuid, jsonb),
   public.enviar_plano(uuid), public.nova_versao_plano(uuid, text), public.cancelar_plano(uuid, text),
   public.registrar_visualizacao_plano(uuid), public.decidir_secao_plano(uuid, text, text, integer[]),
-  private.rascunho_do_plano(uuid), private.aprovacoes_em_vigor(uuid, integer)
+  private.rascunho_do_plano(uuid)
 to authenticated;
-grant execute on function private.em_transicao() to authenticated, service_role;
 
 -- ---------------------------------------------------------------------
 -- RLS
@@ -729,7 +680,7 @@ alter table public.plan_section_decisions enable row level security;
 create policy plans_select on public.plans for select to authenticated
   using ((private.is_staff() and private.has_client_access(client_id))
          or (coalesce(private.current_app_role() = 'cliente', false)
-             and status <> 'rascunho' and enviado_em is not null and private.has_client_access(client_id)));
+             and status <> 'rascunho' and private.has_client_access(client_id)));
 create policy plans_insert on public.plans for insert to authenticated
   with check (private.is_staff() and private.has_client_access(client_id));
 create policy plans_update on public.plans for update to authenticated
@@ -771,8 +722,7 @@ returns boolean
 language sql stable security definer set search_path = ''
 as $$
   select (private.is_staff() and private.has_client_access(
-            case when split_part(p_name, '/', 1) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-                 then split_part(p_name, '/', 1)::uuid end))
+            case when split_part(p_name, '/', 1) ~ '^[0-9a-f-]{36}$' then split_part(p_name, '/', 1)::uuid end))
       or exists (select 1 from public.plan_versions v
                  where v.pdf_path = p_name and v.status <> 'rascunho'
                    and private.cliente_ve_plano(v.plan_id))
