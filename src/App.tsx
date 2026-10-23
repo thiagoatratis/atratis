@@ -5,6 +5,7 @@ import { supabaseConfigurado } from "./lib/supabase";
 import { Carregando, ToastProvider } from "./components/ui";
 import { ShellCliente, ShellInterno } from "./components/Shell";
 import { Entrar } from "./pages/Entrar";
+import { Acesso } from "./pages/Acesso";
 import { Clientes } from "./pages/Clientes";
 import { ClienteDetalhe } from "./pages/ClienteDetalhe";
 import { Usuarios } from "./pages/Usuarios";
@@ -66,8 +67,11 @@ function RotasCliente() {
 
 function Raiz() {
   const { carregando, session, perfil } = useAuth();
+  const { path } = useRouter();
   if (!supabaseConfigurado) return <NaoConfigurado />;
   if (carregando) return <div className="tela-cheia"><Carregando texto="Abrindo…" /></div>;
+  // Link pessoal enviado pelo WhatsApp: tem a própria tela, com ou sem sessão.
+  if (path === "/acesso") return <Acesso />;
   if (!session) return <Entrar />;
   if (!perfil || !perfil.ativo) return <SemAcesso />;
   return perfil.role === "cliente" ? <RotasCliente /> : <RotasInternas />;

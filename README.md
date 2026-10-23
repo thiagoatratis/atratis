@@ -118,3 +118,12 @@ npm run build
 ```
 
 A cada push, o GitHub Actions roda os três, mais a checagem da função de servidor (`deno check`).
+
+
+## Acesso dos clientes (23/10/2026)
+
+Três formas de entrar, todas só para quem a Atratis cadastrou (cadastro aberto continua desligado):
+
+1. **Link pessoal pelo WhatsApp** (sem e-mail): em "Link para o cliente", escolha a pessoa e clique em "Gerar link pessoal". A função `admin-users` (ação `link_acesso`) gera um link de uso único que abre `/acesso`; o login só acontece quando a pessoa toca em "Entrar", então a pré-visualização do WhatsApp não gasta o link. Validade = "Email OTP Expiration" do Supabase (configurar 86400 s = 24 h). Só o link mais recente de cada pessoa vale.
+2. **E-mail em português**: SMTP do Google Workspace (smtp.gmail.com, porta 587, usuário e remetente thiago@atratis.com.br, senha de app colada pelo Thiago) e modelos em `supabase/templates/` (assuntos em `supabase/templates/ASSUNTOS.md`). O e-mail traz botão e código de 6 dígitos.
+3. **Entrar com Google**: provedor Google no Supabase (Client ID e segredo do Google Cloud; URL de retorno `https://jqlxzjigzuodzylaqbao.supabase.co/auth/v1/callback`). O botão só aparece quando o provedor está ligado. Conta Google com e-mail não cadastrado recebe aviso e não entra.

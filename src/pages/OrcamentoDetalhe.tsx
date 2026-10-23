@@ -202,19 +202,21 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
       <Cancelar aberto={cancelando} budgetId={o.id} onFechar={() => setCancelando(false)}
         onPronto={() => { setCancelando(false); avisar("Orçamento cancelado."); void dados.reload(); }} />
       <AvisarCliente aberto={avisarCliente} onFechar={() => setAvisarCliente(false)}
-        caminho={`/orcamentos/${o.id}`}
-        mensagem={(link) => mensagemOrcamento(o, totais(atual?.linhas ?? []).valor, link)} />
+        caminho={`/orcamentos/${o.id}`} clientId={o.client_id}
+        mensagem={(link, pessoal) => mensagemOrcamento(o, totais(atual?.linhas ?? []).valor, link, pessoal)} />
     </>
   );
 }
 
-function mensagemOrcamento(o: Orcamento, total: number, link: string): string {
+function mensagemOrcamento(o: Orcamento, total: number, link: string, pessoal: boolean): string {
   return [
     `Olá! O orçamento de mídia de ${formatarMes(o.mes_referencia)} (${formatarMoeda(total)}) está pronto para a sua aprovação.`,
     "",
     `Acesse: ${link}`,
     "",
-    "Se pedir para entrar, informe o seu e-mail e abra o link de acesso que chegar na sua caixa de entrada.",
+    pessoal
+      ? "O link é só seu e funciona uma vez, por 24 horas. Depois do primeiro acesso, este aparelho fica conectado."
+      : "Se pedir para entrar, informe o seu e-mail e abra o link de acesso que chegar na sua caixa de entrada.",
   ].join("\n");
 }
 

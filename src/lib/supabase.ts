@@ -21,3 +21,15 @@ export const supabase: SupabaseClient = createClient(
     },
   },
 );
+
+/** Provedores de login ligados no painel do Supabase (ex.: Google). */
+export async function provedoresAtivos(): Promise<{ google: boolean }> {
+  if (!url || !anonKey) return { google: false };
+  try {
+    const r = await fetch(`${url}/auth/v1/settings`, { headers: { apikey: anonKey } });
+    const j = (await r.json()) as { external?: Record<string, boolean> };
+    return { google: !!j.external?.google };
+  } catch {
+    return { google: false };
+  }
+}

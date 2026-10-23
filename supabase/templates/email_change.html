@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Confirme a troca de e-mail</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f5f7;">
+<span style="display:none!important;visibility:hidden;opacity:0;height:0;width:0;overflow:hidden;">Confirme o novo e-mail do seu acesso.</span>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f5f7;">
+  <tr>
+    <td align="center" style="padding:32px 16px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;background:#ffffff;border-radius:12px;border:1px solid #e3e5ea;">
+        <tr>
+          <td style="padding:28px 32px 8px 32px;">
+            <img src="https://atratis-approval.vercel.app/logo-atratis.png" width="132" height="36" alt="Atratis Digital" style="display:block;border:0;width:132px;height:auto;">
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 32px 8px 32px;font-family:Arial,Helvetica,sans-serif;color:#232427;">
+            <h1 style="margin:0 0 12px 0;font-size:22px;line-height:1.3;font-weight:bold;color:#232427;">Confirme a troca de e-mail</h1>
+            <p style="margin:0 0 20px 0;font-size:15px;line-height:1.6;color:#4a4c52;">Recebemos um pedido para trocar o e-mail do seu acesso ao portal da Atratis para {{ .NewEmail }}.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 32px 20px 32px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="border-radius:8px;background:#EE4723;">
+                  <a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:13px 26px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:8px;">Confirmar novo e-mail</a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:8px 32px 28px 32px;font-family:Arial,Helvetica,sans-serif;">
+            <p style="margin:0;font-size:13px;line-height:1.6;color:#6c6f77;">Se não foi você que pediu, avise a Atratis.</p>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:16px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#8a8d94;">Atratis Digital · Fortaleza, CE · (85) 3122-4408</p>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

@@ -532,3 +532,13 @@ a.celula-titulo:hover { text-decoration: underline; text-underline-offset: 3px; 
   .emitir-pi.com-previa { grid-template-columns: 1fr; }
   .previa-pi { position: static; }
 }
+
+/* ---------------- Acesso: Google e link pessoal ---------------- */
+.ou { display: flex; align-items: center; gap: 12px; margin: 14px 0; color: var(--suave); font-size: 13px; }
+.ou::before, .ou::after { content: ""; flex: 1; height: 1px; background: var(--linha); }
+.botao-google { gap: 10px; }
+.link-pessoal { border-style: solid; border-color: var(--ok); background: var(--ok-fundo); }
+.link-pessoal code { color: var(--ok); font-family: inherit; font-weight: 600; }
+.entrar-painel .aviso { margin-bottom: 14px; }
+.entrar-painel > .link-discreto { margin-top: 12px; }
+.nota-acesso { margin-top: 14px; }

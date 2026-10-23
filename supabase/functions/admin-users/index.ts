@@ -1,4 +1,4 @@
-// Função de servidor: gestão de usuários (somente administradores).
+// Função de servidor: gestão de usuários e links de acesso.
 //
 // Por que existe: criar usuário no Supabase Auth e definir o papel dele exige
 // a chave de servidor (service_role), que nunca pode ir para o navegador.
@@ -11,6 +11,10 @@
 //     "enviar_link": true, "redirect_to": "https://..." }
 //   { "acao": "atualizar", "user_id", "nome"?, "perfil"?, "ativo"? }
 //   { "acao": "enviar_link", "user_id", "redirect_to" }
+//   { "acao": "link_acesso", "user_id", "destino": "/orcamentos/<id>", "base": "https://site" }
+//     Equipe ou admin com acesso ao cliente. Gera um link pessoal de uso único
+//     (vale pelo prazo do OTP configurado no Supabase) para mandar pelo WhatsApp.
+//     Nenhum e-mail é enviado. Só o link mais recente da pessoa funciona.
 
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 
@@ -66,7 +70,9 @@ function adminClient(actorId: string): SupabaseClient {
   });
 }
 
-async function quemChama(req: Request): Promise<string> {
+interface Chamador { id: string; role: Perfil }
+
+async function quemChama(req: Request): Promise<Chamador> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) throw new HttpError(401, "Sessão ausente. Entre novamente.");
   const anon = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false } });
@@ -76,10 +82,15 @@ async function quemChama(req: Request): Promise<string> {
   const svc = adminClient(data.user.id);
   const { data: perfil } = await svc
     .from("profiles").select("role, ativo").eq("id", data.user.id).maybeSingle();
-  if (!perfil || perfil.role !== "admin" || !perfil.ativo) {
-    throw new HttpError(403, "Somente administradores gerenciam usuários.");
+  if (!perfil || !perfil.ativo || perfil.role === "cliente") {
+    throw new HttpError(403, "Somente a equipe da Atratis usa esta função.");
   }
-  return data.user.id;
+  return { id: data.user.id, role: perfil.role as Perfil };
+}
+
+function somenteAdmin(c: Chamador): string {
+  if (c.role !== "admin") throw new HttpError(403, "Somente administradores gerenciam usuários.");
+  return c.id;
 }
 
 function texto(v: unknown, max = 200): string | null {
@@ -232,20 +243,62 @@ async function reenviar(actorId: string, body: Record<string, unknown>) {
   return { ok: true };
 }
 
+const SITES = (Deno.env.get("SITE_URLS") ?? "https://atratis-approval.vercel.app,http://localhost:5173")
+  .split(",").map((u) => u.trim().replace(/\/$/, ""));
+const DESTINO_RE = /^\/((orcamentos|aprovacoes)\/[0-9a-f-]{36})?$/i;
+
+async function linkAcesso(c: Chamador, body: Record<string, unknown>) {
+  const svc = adminClient(c.id);
+  const userId = String(body.user_id ?? "");
+  if (!UUID_RE.test(userId)) throw new HttpError(400, "Pessoa inválida.");
+  const destino = typeof body.destino === "string" && DESTINO_RE.test(body.destino) ? body.destino : "/";
+  // Só gera link para o próprio site (evita link de acesso apontando para outro endereço).
+  const base = redirectValido(body.base);
+  if (!base || !SITES.includes(new URL(base).origin)) throw new HttpError(400, "Endereço do site não autorizado.");
+
+  const { data: p } = await svc.from("profiles").select("email, role, ativo, nome").eq("id", userId).maybeSingle();
+  if (!p || p.role !== "cliente") throw new HttpError(404, "Esta pessoa não é um usuário cliente.");
+  if (!p.ativo) throw new HttpError(400, "Usuário inativo. Reative antes de gerar o link.");
+
+  // Empresas ativas da pessoa; a equipe só gera link para cliente que acompanha.
+  const { data: vinculos } = await svc.from("client_members").select("client_id").eq("user_id", userId).eq("ativo", true);
+  const empresas = (vinculos ?? []).map((v) => v.client_id as string);
+  if (!empresas.length) throw new HttpError(400, "Esta pessoa não está ligada a nenhuma empresa ativa.");
+  if (c.role === "equipe") {
+    const { data: acesso } = await svc.from("staff_client_access").select("client_id")
+      .eq("user_id", c.id).in("client_id", empresas);
+    if (!acesso?.length) throw new HttpError(403, "Você não acompanha a empresa desta pessoa.");
+  }
+
+  const { data, error } = await svc.auth.admin.generateLink({ type: "magiclink", email: p.email });
+  const hash = data?.properties?.hashed_token;
+  if (error || !hash) throw new HttpError(502, `Não foi possível gerar o link: ${error?.message ?? "sem token"}`);
+
+  await svc.rpc("log_admin_event", {
+    p_action: "usuario.link_acesso_gerado", p_entity: "profiles", p_entity_id: userId, p_details: { destino },
+  });
+  // O token vai depois do "#": não chega a servidores nem à pré-visualização do WhatsApp.
+  const url = new URL("/acesso", base);
+  url.hash = new URLSearchParams({ t: hash, d: destino }).toString();
+  return { link: url.toString(), nome: p.nome ?? p.email };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json(405, { erro: "Método não permitido." });
 
   try {
-    const actorId = await quemChama(req);
+    const chamador = await quemChama(req);
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     switch (body.acao) {
       case "convidar":
-        return json(200, await convidar(actorId, body));
+        return json(200, await convidar(somenteAdmin(chamador), body));
       case "atualizar":
-        return json(200, await atualizar(actorId, body));
+        return json(200, await atualizar(somenteAdmin(chamador), body));
       case "enviar_link":
-        return json(200, await reenviar(actorId, body));
+        return json(200, await reenviar(somenteAdmin(chamador), body));
+      case "link_acesso":
+        return json(200, await linkAcesso(chamador, body));
       default:
         return json(400, { erro: "Ação desconhecida." });
     }

@@ -169,6 +169,16 @@ export function enviarLinkAcesso(userId: string) {
   });
 }
 
+/**
+ * Link de acesso pessoal para mandar pelo WhatsApp: entra sem e-mail, uma vez,
+ * dentro do prazo configurado no Supabase. Só o link mais recente da pessoa vale.
+ */
+export function gerarLinkAcesso(userId: string, destino: string) {
+  return chamarAdminUsuarios<{ link: string; nome: string }>({
+    acao: "link_acesso", user_id: userId, destino, base: window.location.origin,
+  });
+}
+
 // ---------------- Agência ----------------
 
 export async function obterAgencia(): Promise<Agencia | null> {

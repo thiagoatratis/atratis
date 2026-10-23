@@ -93,8 +93,8 @@ export function SolicitacaoDetalhe({ id }: { id: string }) {
       />
 
       <AvisarCliente aberto={avisarCliente} onFechar={() => setAvisarCliente(false)}
-        caminho={`/aprovacoes/${s.id}`}
-        mensagem={(link) => mensagemCriativos(s, link)} />
+        caminho={`/aprovacoes/${s.id}`} clientId={s.client_id}
+        mensagem={(link, pessoal) => mensagemCriativos(s, link, pessoal)} />
 
       {s.status === "cancelado" && (
         <div className="aviso aviso-atencao"><p>Cancelada em {formatarDataHora(s.cancelado_em)}. Motivo: {s.motivo_cancelamento}</p></div>
@@ -491,13 +491,15 @@ function Cancelar({ aberto, requestId, onFechar, onPronto }: { aberto: boolean; 
 }
 
 
-function mensagemCriativos(s: Solicitacao, link: string): string {
+function mensagemCriativos(s: Solicitacao, link: string, pessoal: boolean): string {
   const prazo = s.prazo_aprovacao ? ` até ${formatarData(s.prazo_aprovacao)}` : "";
   return [
     `Olá! Os criativos de "${s.titulo}" estão prontos para a sua aprovação${prazo}.`,
     "",
     `Acesse: ${link}`,
     "",
-    "Se pedir para entrar, informe o seu e-mail e abra o link de acesso que chegar na sua caixa de entrada.",
+    pessoal
+      ? "O link é só seu e funciona uma vez, por 24 horas. Depois do primeiro acesso, este aparelho fica conectado."
+      : "Se pedir para entrar, informe o seu e-mail e abra o link de acesso que chegar na sua caixa de entrada.",
   ].join("\n");
 }
