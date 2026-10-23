@@ -183,6 +183,15 @@ export function descrever(e: EventoAuditoria, pessoas: Map<string, Pick<Profile,
           : `Alteração no orçamento pedida por ${String(reg.user_nome || reg.user_email || "cliente")}`,
         detalhes: [`Total ${valor("valor", reg.total)}`, ...(reg.comentario ? [`"${String(reg.comentario)}"`] : [])],
       };
+    case "pi.criado":
+      return {
+        titulo: `P.I. ${String(reg.numero ?? "")} emitido`,
+        detalhes: [`${String(reg.veiculacao ?? "")}, ${valor("valor", reg.valor)}`],
+      };
+    case "pi.alterado":
+      if (alt.status?.para === "cancelado") return { titulo: "P.I. cancelado", detalhes: [] };
+      if (alt.pdf_path) return { titulo: "PDF do P.I. gerado", detalhes: [] };
+      return { titulo: "P.I. alterado", detalhes: [] };
     case "comentario.criado":
       return { titulo: `Comentário de ${String(reg.autor_nome ?? "")}`, detalhes: [String(reg.corpo ?? "").slice(0, 280)] };
     default:

@@ -20,6 +20,8 @@ jobs:
         env:
           VITE_SUPABASE_URL: https://exemplo.supabase.co
           VITE_SUPABASE_ANON_KEY: chave-de-exemplo
+      - name: PDF do P.I. com a fonte real
+        run: node scripts/pdf/conferir.mjs
 
   banco:
     name: Banco (migrations e RLS)

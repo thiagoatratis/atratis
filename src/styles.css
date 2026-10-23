@@ -514,3 +514,21 @@ a.celula-titulo:hover { text-decoration: underline; text-underline-offset: 3px; 
   .orcamento > .resumo-valores { display: grid; }
   .tabela-orcamento tfoot { display: none; }
 }
+
+/* ---------------- Etapa 4: Pedidos de Inserção ---------------- */
+.pilha-larga { display: flex; flex-direction: column; gap: 32px; min-width: 0; }
+.linha-cancelada td { color: var(--suave); }
+.linha-cancelada td strong { text-decoration: line-through; }
+.opcoes-radio { display: flex; flex-direction: column; gap: 8px; }
+.opcoes-radio.linha { flex-direction: row; gap: 20px; flex-wrap: wrap; }
+.opcoes-radio small { font-size: 12.5px; }
+.emitir-pi.com-previa { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 24px; align-items: start; }
+.previa-pi { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 0; }
+.previa-pi figure { margin: 0; }
+.previa-pi figcaption { font-size: 13px; font-weight: 600; color: var(--tinta-2); margin-bottom: 6px; }
+.previa-pi iframe { width: 100%; height: 520px; border: 1px solid var(--linha); border-radius: var(--raio-sm); background: #fff; }
+.rodape-aviso { margin-right: auto; align-self: center; font-size: 14px; font-weight: 600; color: var(--atencao); }
+@media (max-width: 960px) {
+  .emitir-pi.com-previa { grid-template-columns: 1fr; }
+  .previa-pi { position: static; }
+}

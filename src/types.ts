@@ -269,3 +269,58 @@ export const STATUS_VERSAO_ORCAMENTO: Record<StatusVersaoOrcamento, { rotulo: st
   alteracoes_solicitadas: { rotulo: "Alterações pedidas", tom: "alerta" },
   substituida: { rotulo: "Substituída", tom: "neutro" },
 };
+
+// ---------------- Etapa 4: Pedidos de Inserção ----------------
+
+export interface DadosEmpresaPI {
+  nome: string | null;
+  razao_social: string | null;
+  cnpj: string | null;
+  endereco: string | null;
+  bairro: string | null;
+  cidade: string | null;
+  uf: string | null;
+  cep: string | null;
+  telefone: string | null;
+  email: string | null;
+}
+
+export interface PedidoInsercao {
+  id: string;
+  numero: string;
+  data_emissao: string;
+  sequencia: number;
+  budget_id: string;
+  version_id: string;
+  client_id: string;
+  plataforma: string | null;
+  veiculacao: string;
+  valor: number;
+  mes_referencia: string;
+  campanha: string;
+  periodo: string;
+  prazo_pagamento: string;
+  faturamento: "bruto" | "liquido";
+  entrega_fatura: "agencia" | "cliente";
+  observacoes: string | null;
+  observacao_faturamento: string | null;
+  dados_cliente: DadosEmpresaPI;
+  dados_agencia: DadosEmpresaPI;
+  pdf_path: string | null;
+  status: "emitido" | "cancelado";
+  cancelado_em: string | null;
+  motivo_cancelamento: string | null;
+  created_at: string;
+  created_by: string | null;
+}
+
+/** Campos que a equipe preenche (ou confirma) ao emitir. */
+export interface CamposEmissaoPI {
+  campanha: string;
+  periodo: string;
+  prazo_pagamento: string;
+  faturamento: "bruto" | "liquido";
+  entrega_fatura: "agencia" | "cliente";
+  observacoes: string | null;
+  observacao_faturamento: string | null;
+}

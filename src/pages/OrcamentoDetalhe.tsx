@@ -19,6 +19,7 @@ import {
 } from "../components/ui";
 import { AvisarCliente } from "../components/AvisarCliente";
 import { TabelaOrcamento } from "../components/TabelaOrcamento";
+import { PedidosInsercao } from "../components/PedidosInsercao";
 import { OrcamentoFormulario } from "./OrcamentoFormulario";
 import {
   STATUS_ORCAMENTO, STATUS_VERSAO_ORCAMENTO, type DecisaoOrcamento, type LinhaOrcamento, type Orcamento,
@@ -129,6 +130,7 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
       )}
 
       <div className="layout-detalhe">
+        <div className="pilha-larga">
         <section aria-labelledby="titulo-valores">
           <div className="secao-topo">
             <h2 id="titulo-valores" className="titulo-secao">Valores</h2>
@@ -168,6 +170,8 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
 
           {decisoesDaVista.length > 0 && <ListaDecisoes decisoes={decisoesDaVista} />}
         </section>
+        <PedidosInsercao orcamento={o} versao={atual} cliente={cliente} campanha={campanha?.nome} equipe />
+        </div>
 
         <aside className="lateral-detalhe">
           <section className="painel">

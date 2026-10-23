@@ -13,6 +13,7 @@ import { Link } from "../lib/router";
 import { formatarData, formatarDataHora } from "../lib/format";
 import { AvisoErro, Botao, CampoTexto, Carregando, Modal, Selo, Vazio, useAviso } from "../components/ui";
 import { TabelaOrcamento } from "../components/TabelaOrcamento";
+import { PedidosInsercao } from "../components/PedidosInsercao";
 import { STATUS_ORCAMENTO, STATUS_VERSAO_ORCAMENTO } from "../types";
 
 export function AprovacaoOrcamento({ id }: { id: string }) {
@@ -166,6 +167,8 @@ export function AprovacaoOrcamento({ id }: { id: string }) {
           )}
         </section>
       )}
+
+      <PedidosInsercao orcamento={o} versao={atual} cliente={undefined} campanha={campanha?.nome} equipe={false} />
 
       <Modal aberto={confirmar} titulo="Aprovar este orçamento?" onFechar={() => setConfirmar(false)} largura={460}
         rodape={<>
