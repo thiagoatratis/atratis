@@ -9,13 +9,13 @@ Portal de aprovação de criativos e orçamentos de mídia paga da Atratis Digit
 
 | Etapa | O que entrega | Situação |
 |---|---|---|
-| 1. Base | Login por link mágico, perfis (admin, equipe, cliente), clientes, aprovadores por empresa, acesso da equipe por cliente, dados da agência, histórico imutável | Pronta no código, com testes de permissão. Falta configurar o Supabase (abaixo) |
-| 2. Criativos | Solicitações, peças, upload, versões, aprovação por peça | A fazer |
-| 3. Orçamentos | Linhas por canal, categorias (mídia, honorários, impostos), aprovação | A fazer |
+| 1. Base | Login por link mágico, perfis (admin, equipe, cliente), clientes, aprovadores por empresa, acesso da equipe por cliente, dados da agência, histórico imutável | Publicada (22/10/2026) |
+| 2. Criativos | Solicitações, peças, upload, versões, aprovação por peça, link para avisar o cliente | Publicada (22/10/2026) |
+| 3. Orçamentos | Orçamento mensal por cliente, linhas por plataforma com o valor do boleto, imposto do Meta Ads (12,15%) por dentro, versões, aprovação do orçamento inteiro | Publicada (23/10/2026) |
 | 4. P.I. | Numeração AAMMDD.NN, PDF A4 no modelo da Atratis, prévia, e-mail para copiar | A fazer |
 | 5. Painel | Indicadores, lista geral com filtros, histórico por solicitação | A fazer |
 
-Nada nas etapas 2 a 5 aparece na interface até estar funcionando de verdade.
+Nada nas etapas 4 e 5 aparece na interface até estar funcionando de verdade.
 
 ## Configuração do Supabase (uma vez)
 
