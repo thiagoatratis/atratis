@@ -399,6 +399,9 @@ export interface VersaoPlano {
   status: StatusVersaoPlano;
   observacao: string | null;
   pdf_path: string | null;
+  /** Apresentação publicada em atratis.com.br (abre no slide pelo #número). */
+  link_url: string | null;
+  /** Total de slides: do PDF ou informado junto com o link. */
   paginas: number | null;
   enviado_em: string | null;
   decidido_em: string | null;

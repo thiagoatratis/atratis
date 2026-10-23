@@ -97,7 +97,7 @@ export function Planos() {
                       </td>
                       <td className="col-opcional tab-num">{atual?.numero ?? ""}</td>
                       <td className="col-opcional">
-                        {!atual?.pdf_path ? <span className="falta">Sem PDF</span>
+                        {!atual?.pdf_path && !atual?.link_url ? <span className="falta">Sem PDF nem link</span>
                           : !c.total ? <span className="falta">Seções não marcadas</span>
                           : atual.status === "rascunho" ? `${c.total} para aprovar`
                           : `${c.aprovadas} de ${c.total} aprovadas${c.ajustes ? `, ${c.ajustes} com ajuste` : ""}`}

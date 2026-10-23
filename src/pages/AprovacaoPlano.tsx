@@ -12,6 +12,7 @@ import { Link } from "../lib/router";
 import { formatarData } from "../lib/format";
 import { AvisoErro, Botao, CampoTexto, Carregando, Selo, Vazio, useAviso } from "../components/ui";
 import { Slide, SlideAmpliado, usePdfPlano } from "../components/SlidesPdf";
+import { JanelaLink } from "../components/SlidesLink";
 import { HistoricoSecao } from "./PlanoDetalhe";
 import { STATUS_PLANO, STATUS_SECAO, type DecisaoSecaoPlano, type SecaoPlano } from "../types";
 
@@ -41,7 +42,12 @@ export function AprovacaoPlano({ id }: { id: string }) {
 
   // o cliente só recebe versões já enviadas; a última é a que vale
   const atual = dados.data?.versoes.at(-1);
-  const pdf = usePdfPlano(atual?.pdf_path);
+  // Com link e PDF, abre no link (vídeos e carrosséis funcionando) e dá para trocar.
+  const [escolha, setEscolha] = useState<"link" | "pdf" | null>(null);
+  // A escolha só vale se a versão atual tem aquele material.
+  const valida = (escolha === "pdf" && atual?.pdf_path) || (escolha === "link" && atual?.link_url) ? escolha : null;
+  const modo: "link" | "pdf" = valida ?? (atual?.link_url ? "link" : "pdf");
+  const pdf = usePdfPlano(modo === "pdf" ? atual?.pdf_path : null);
   const [ampliar, setAmpliar] = useState<{ pagina: number; secao: SecaoPlano } | null>(null);
 
   if (!registrado || (dados.loading && !dados.data)) return <Carregando />;
@@ -126,6 +132,17 @@ export function AprovacaoPlano({ id }: { id: string }) {
         </div>
       )}
 
+      {atual?.link_url && atual.pdf_path && (
+        <div className="segmentado escolha-formato" role="group" aria-label="Como ver o plano">
+          <button type="button" className={modo === "link" ? "on" : ""} aria-pressed={modo === "link"} onClick={() => setEscolha("link")}>
+            Apresentação (com vídeos)
+          </button>
+          <button type="button" className={modo === "pdf" ? "on" : ""} aria-pressed={modo === "pdf"} onClick={() => setEscolha("pdf")}>
+            PDF
+          </button>
+        </div>
+      )}
+
       {atual && atual.secoes.length > 0 && (
         <nav className="indice-secoes" aria-label="Seções do plano">
           {atual.secoes.map((s) => (
@@ -137,11 +154,12 @@ export function AprovacaoPlano({ id }: { id: string }) {
         </nav>
       )}
 
-      {pdf.carregando && <Carregando texto="Abrindo o plano…" />}
-      {pdf.erro && <AvisoErro erro={pdf.erro} tentarDeNovo={pdf.tentarDeNovo} />}
+      {modo === "pdf" && pdf.carregando && <Carregando texto="Abrindo o plano…" />}
+      {modo === "pdf" && pdf.erro && <AvisoErro erro={pdf.erro} tentarDeNovo={pdf.tentarDeNovo} />}
 
       {atual?.secoes.map((s) => (
-        <SecaoCliente key={s.id} secao={s} doc={pdf.doc} proporcao={pdf.proporcao}
+        <SecaoCliente key={s.id} secao={s} doc={modo === "pdf" ? pdf.doc : null} proporcao={pdf.proporcao}
+          link={modo === "link" ? atual?.link_url ?? null : null}
           decisoes={decisoes.filter((d) => d.section_id === s.id)}
           aberto={aberto} podeAprovar={podeAprovar} ultima={c.pendentes === 1 && s.status === "pendente"}
           onAmpliar={(n) => setAmpliar({ pagina: n, secao: s })}
@@ -175,8 +193,8 @@ export function AprovacaoPlano({ id }: { id: string }) {
   );
 }
 
-function SecaoCliente({ secao: s, doc, proporcao, decisoes, aberto, podeAprovar, ultima, onAmpliar, onDecidido }: {
-  secao: SecaoPlano; doc: DocumentoPdf | null; proporcao: number; decisoes: DecisaoSecaoPlano[];
+function SecaoCliente({ secao: s, doc, link, proporcao, decisoes, aberto, podeAprovar, ultima, onAmpliar, onDecidido }: {
+  secao: SecaoPlano; doc: DocumentoPdf | null; link: string | null; proporcao: number; decisoes: DecisaoSecaoPlano[];
   aberto: boolean; podeAprovar: boolean; ultima: boolean;
   onAmpliar: (pagina: number) => void; onDecidido: (resultado: string) => void;
 }) {
@@ -193,8 +211,10 @@ function SecaoCliente({ secao: s, doc, proporcao, decisoes, aberto, podeAprovar,
 
   const paginas = Array.from({ length: s.pagina_fim - s.pagina_inicio + 1 }, (_, k) => s.pagina_inicio + k);
   const st = STATUS_SECAO[s.status];
-  // Só decide depois que os slides aparecem.
-  const mostrarBotoes = decide && !!doc && (s.status === "pendente" || mudando) && !pedindo;
+  // Só decide depois que os slides aparecem (no PDF, quando ele termina de abrir).
+  const [linkAberto, setLinkAberto] = useState(false);
+  const podeVer = link ? linkAberto : !!doc;
+  const mostrarBotoes = decide && podeVer && (s.status === "pendente" || mudando) && !pedindo;
 
   async function decidir(tipo: "aprovada" | "ajuste_solicitado") {
     if (tipo === "ajuste_solicitado" && texto.trim().length < 3) return setErro("Conte o que precisa ser ajustado.");
@@ -224,7 +244,15 @@ function SecaoCliente({ secao: s, doc, proporcao, decisoes, aberto, podeAprovar,
       {mantida && <p className="suave pequeno">Esta seção já foi aprovada e não mudou nesta versão.</p>}
       {!s.requer_aprovacao && <p className="suave pequeno">Seção informativa: não precisa de decisão.</p>}
 
-      {verSlides ? (
+      {verSlides && link ? (
+        <>
+          <JanelaLink url={link} pagina={s.pagina_inicio} titulo={s.nome} onCarregada={() => setLinkAberto(true)} />
+          <p className="suave pequeno">
+            {s.pagina_fim > s.pagina_inicio && `A apresentação abre no slide ${s.pagina_inicio}. Use as setas dela para ver até o slide ${s.pagina_fim}. `}
+            Se ela não aparecer, use "Abrir em tela cheia".
+          </p>
+        </>
+      ) : verSlides ? (
         doc ? (
           <div className="slides-coluna">
             {paginas.map((n) => <Slide key={n} doc={doc} pagina={n} proporcao={proporcao} onAbrir={() => onAmpliar(n)} />)}
@@ -247,7 +275,7 @@ function SecaoCliente({ secao: s, doc, proporcao, decisoes, aberto, podeAprovar,
           </div>
         </>
       )}
-      {decide && !!doc && pedindo && (
+      {decide && podeVer && pedindo && (
         <div className="pedido-alteracao">
           <CampoTexto rotulo="O que precisa ser ajustado nesta seção?" rows={3} value={texto} autoFocus maxLength={4000}
             onChange={(e) => setTexto(e.target.value)} erro={erro} />
