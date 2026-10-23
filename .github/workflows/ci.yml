@@ -15,7 +15,7 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
-      - run: npm run typecheck
+      - run: npx tsc -b --pretty false
       - run: npm run build
         env:
           VITE_SUPABASE_URL: https://exemplo.supabase.co
