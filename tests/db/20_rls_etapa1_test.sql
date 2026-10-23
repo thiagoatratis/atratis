@@ -9,13 +9,13 @@ select tests.logout();
 set role anon;
 do $$ begin
   perform 1 from public.clients;
-  raise exception 'FALHOU: anon leu clientes';
+  raise exception 'FALHOU: anon leu clientes' using errcode = 'TF001';
 exception when insufficient_privilege then
   raise notice 'ok  anon não lê clientes';
 end $$;
 do $$ begin
   perform 1 from public.profiles;
-  raise exception 'FALHOU: anon leu perfis';
+  raise exception 'FALHOU: anon leu perfis' using errcode = 'TF001';
 exception when insufficient_privilege then
   raise notice 'ok  anon não lê perfis';
 end $$;
@@ -72,13 +72,13 @@ select tests.ok(exists (
 
 do $$ begin
   insert into public.clients (nome_comercial, cnpj) values ('CNPJ inválido', '123');
-  raise exception 'FALHOU: aceitou CNPJ inválido';
+  raise exception 'FALHOU: aceitou CNPJ inválido' using errcode = 'TF001';
 exception when check_violation then raise notice 'ok  CNPJ com formato inválido é recusado';
 end $$;
 
 do $$ begin
   insert into public.clients (nome_comercial) values ('  nortis energia ');
-  raise exception 'FALHOU: aceitou cliente duplicado';
+  raise exception 'FALHOU: aceitou cliente duplicado' using errcode = 'TF001';
 exception when unique_violation then raise notice 'ok  nome comercial duplicado é recusado';
 end $$;
 
@@ -89,32 +89,32 @@ select tests.ok((select updated_by from public.agency_settings) = tests.id('admi
 do $$ begin
   insert into public.client_members (client_id, user_id)
   values (tests.id('nortis'), tests.id('equipe2'));
-  raise exception 'FALHOU: vinculou usuário da equipe como aprovador';
+  raise exception 'FALHOU: vinculou usuário da equipe como aprovador' using errcode = 'TF001';
 exception when check_violation then raise notice 'ok  só perfil Cliente vira aprovador de empresa';
 end $$;
 
 do $$ begin
   insert into public.staff_client_access (user_id, client_id)
   values (tests.id('cli_nortis'), tests.id('dasart'));
-  raise exception 'FALHOU: deu acesso de equipe a um cliente';
+  raise exception 'FALHOU: deu acesso de equipe a um cliente' using errcode = 'TF001';
 exception when check_violation then raise notice 'ok  acesso por cliente só para perfil Equipe';
 end $$;
 
 do $$ begin
   delete from public.audit_log;
-  raise exception 'FALHOU: admin apagou auditoria';
+  raise exception 'FALHOU: admin apagou auditoria' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  admin não apaga auditoria';
 end $$;
 
 do $$ begin
   update public.profiles set role = 'equipe' where id = tests.id('admin');
-  raise exception 'FALHOU: rebaixou o único admin';
+  raise exception 'FALHOU: rebaixou o único admin' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  não deixa o sistema sem administrador';
 end $$;
 
 do $$ begin
   delete from public.clients where id = tests.id('dasart');
-  raise exception 'FALHOU: apagou cliente';
+  raise exception 'FALHOU: apagou cliente' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  cliente não é apagado (só inativado)';
 end $$;
 reset role;
@@ -138,7 +138,7 @@ select tests.ok((select observacoes_internas from public.client_internal where c
 
 do $$ begin
   insert into public.clients (nome_comercial) values ('Criado pela equipe');
-  raise exception 'FALHOU: equipe criou cliente';
+  raise exception 'FALHOU: equipe criou cliente' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  equipe não cadastra cliente';
 end $$;
 
@@ -160,13 +160,13 @@ set role authenticated;
 
 do $$ begin
   insert into public.client_members (client_id, user_id) values (tests.id('nortis'), tests.id('cli_dasart'));
-  raise exception 'FALHOU: equipe vinculou aprovador';
+  raise exception 'FALHOU: equipe vinculou aprovador' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  equipe não vincula aprovadores';
 end $$;
 
 do $$ begin
   update public.profiles set role = 'admin' where id = tests.id('equipe1');
-  raise exception 'FALHOU: equipe se autopromoveu';
+  raise exception 'FALHOU: equipe se autopromoveu' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  equipe não muda o próprio papel';
 end $$;
 reset role;
@@ -203,25 +203,25 @@ select tests.ok((select nome from public.profiles where id = tests.id('cli_norti
 
 do $$ begin
   update public.profiles set role = 'admin' where id = tests.id('cli_nortis');
-  raise exception 'FALHOU: cliente virou admin';
+  raise exception 'FALHOU: cliente virou admin' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  cliente não muda o próprio papel';
 end $$;
 
 do $$ begin
   update public.client_members set pode_aprovar = true where user_id = tests.id('cli_nortis');
-  if found then raise exception 'FALHOU: cliente alterou o próprio vínculo'; end if;
+  if found then raise exception 'FALHOU: cliente alterou o próprio vínculo' using errcode = 'TF001'; end if;
   raise notice 'ok  cliente não altera o próprio vínculo';
 end $$;
 
 do $$ begin
   insert into public.client_members (client_id, user_id) values (tests.id('dasart'), tests.id('cli_nortis'));
-  raise exception 'FALHOU: cliente se vinculou a outra empresa';
+  raise exception 'FALHOU: cliente se vinculou a outra empresa' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  cliente não se vincula a outra empresa';
 end $$;
 
 do $$ begin
   insert into public.client_internal (client_id, observacoes_internas) values (tests.id('nortis'), 'x');
-  raise exception 'FALHOU: cliente escreveu nota interna';
+  raise exception 'FALHOU: cliente escreveu nota interna' using errcode = 'TF001';
 exception when insufficient_privilege or unique_violation then raise notice 'ok  cliente não escreve nota interna';
 end $$;
 
@@ -268,7 +268,7 @@ select tests.ok(exists (
 
 do $$ begin
   perform public.log_admin_event('usuario.convidado', 'profiles', 'x');
-  raise exception 'FALHOU: usuário comum gravou evento de servidor';
+  raise exception 'FALHOU: usuário comum gravou evento de servidor' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  só a função de servidor registra eventos administrativos';
 end $$;
 reset role;

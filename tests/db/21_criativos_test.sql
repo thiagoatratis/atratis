@@ -48,27 +48,27 @@ select tests.ok((select numero from public.piece_versions where id = '10000000-0
 do $$ begin
   insert into public.piece_versions (piece_id, tipo, link_url)
   values ('10000000-0000-0000-0000-00000000000a', 'link', 'https://outro.com');
-  raise exception 'FALHOU: criou segunda versão com rascunho aberto';
+  raise exception 'FALHOU: criou segunda versão com rascunho aberto' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  não cria versão nova enquanto há rascunho';
 end $$;
 
 do $$ begin
   insert into public.piece_versions (piece_id, tipo, storage_path, mime_type)
   values ('10000000-0000-0000-0000-00000000000b', 'arquivo', 'x/y/z.exe', 'application/x-msdownload');
-  raise exception 'FALHOU: aceitou arquivo executável';
+  raise exception 'FALHOU: aceitou arquivo executável' using errcode = 'TF001';
 exception when check_violation or raise_exception then raise notice 'ok  só aceita JPG, PNG, WEBP, MP4 e PDF';
 end $$;
 
 do $$ begin
   update public.creative_requests set status = 'aprovado' where id = '10000000-0000-0000-0000-000000000001';
-  raise exception 'FALHOU: equipe mudou status direto';
+  raise exception 'FALHOU: equipe mudou status direto' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  status não muda direto na tabela';
 end $$;
 
 do $$ begin
   insert into storage.objects (bucket_id, name)
   values ('criativos', tests.id('dasart') || '/10000000-0000-0000-0000-000000000001/x/y.png');
-  raise exception 'FALHOU: enviou arquivo para pasta de outro cliente';
+  raise exception 'FALHOU: enviou arquivo para pasta de outro cliente' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  equipe não envia arquivo para cliente sem acesso';
 end $$;
 reset role;
@@ -97,12 +97,12 @@ select tests.ok(public.enviar_solicitacao('10000000-0000-0000-0000-000000000001'
 select tests.ok((select count(*) from public.piece_versions where status = 'pendente') = 2, 'as duas versões ficam pendentes');
 do $$ begin
   perform public.enviar_solicitacao('10000000-0000-0000-0000-000000000001');
-  raise exception 'FALHOU: reenviou sem nada novo';
+  raise exception 'FALHOU: reenviou sem nada novo' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  não reenvia sem peça ou versão nova';
 end $$;
 do $$ begin
   update public.piece_versions set link_url = 'https://trocado.com' where id = '10000000-0000-0000-0000-0000000000a1';
-  raise exception 'FALHOU: alterou versão já enviada';
+  raise exception 'FALHOU: alterou versão já enviada' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  versão enviada não pode ser alterada';
 end $$;
 reset role;
@@ -121,7 +121,7 @@ set role authenticated;
 select tests.ok((select count(*) from public.creative_pieces) = 2, 'quem só visualiza vê as peças');
 do $$ begin
   perform public.decidir_versao('10000000-0000-0000-0000-0000000000a1', 'aprovado');
-  raise exception 'FALHOU: leitor aprovou';
+  raise exception 'FALHOU: leitor aprovou' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  quem só visualiza não aprova';
 end $$;
 reset role;
@@ -138,7 +138,7 @@ select tests.ok(public.decidir_versao('10000000-0000-0000-0000-0000000000a1', 'a
   'aprovar uma peça mantém em análise enquanto houver outra pendente');
 do $$ begin
   perform public.decidir_versao('10000000-0000-0000-0000-0000000000b1', 'alteracoes_solicitadas', '');
-  raise exception 'FALHOU: pediu alteração sem dizer o quê';
+  raise exception 'FALHOU: pediu alteração sem dizer o quê' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  pedido de alteração exige descrição';
 end $$;
 select tests.ok(public.decidir_versao('10000000-0000-0000-0000-0000000000b1', 'alteracoes_solicitadas', 'Trocar a trilha') = 'alteracoes_solicitadas',
@@ -147,20 +147,20 @@ select tests.ok((select status from public.piece_versions where id = '10000000-0
   'a aprovação da outra peça é preservada');
 do $$ begin
   perform public.decidir_versao('10000000-0000-0000-0000-0000000000a1', 'alteracoes_solicitadas', 'mudei de ideia');
-  raise exception 'FALHOU: decidiu duas vezes';
+  raise exception 'FALHOU: decidiu duas vezes' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  peça já decidida não recebe outra decisão';
 end $$;
 
 do $$ begin
   update public.approvals set decisao = 'aprovado';
-  raise exception 'FALHOU: cliente reescreveu decisão';
+  raise exception 'FALHOU: cliente reescreveu decisão' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  cliente não altera o histórico de decisões';
 end $$;
 do $$ begin
   insert into public.approvals (version_id, piece_id, request_id, client_id, decisao)
   values ('10000000-0000-0000-0000-0000000000b1', '10000000-0000-0000-0000-00000000000b',
           '10000000-0000-0000-0000-000000000001', tests.id('nortis'), 'aprovado');
-  raise exception 'FALHOU: cliente gravou decisão direto';
+  raise exception 'FALHOU: cliente gravou decisão direto' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  decisão só pelo fluxo';
 end $$;
 
@@ -178,7 +178,7 @@ set role authenticated;
 select tests.ok((select count(*) from public.approvals) = 2, 'equipe vê as decisões do cliente');
 do $$ begin
   perform public.enviar_solicitacao('10000000-0000-0000-0000-000000000001');
-  raise exception 'FALHOU: reenviou sem corrigir';
+  raise exception 'FALHOU: reenviou sem corrigir' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  não reenvia peça devolvida sem versão nova';
 end $$;
 
@@ -229,7 +229,7 @@ select tests.ok((select status from public.creative_requests) = 'em_revisao_inte
 
 do $$ begin
   perform public.cancelar_solicitacao('10000000-0000-0000-0000-000000000001', '');
-  raise exception 'FALHOU: cancelou sem motivo';
+  raise exception 'FALHOU: cancelou sem motivo' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  cancelamento exige motivo';
 end $$;
 select public.cancelar_solicitacao('10000000-0000-0000-0000-000000000001', 'Campanha suspensa pelo cliente');
@@ -237,7 +237,7 @@ select tests.ok((select status from public.creative_requests) = 'cancelado', 'so
 do $$ begin
   insert into public.creative_pieces (request_id, nome, canal, formato)
   values ('10000000-0000-0000-0000-000000000001', 'Nova', 'Meta Ads', 'Feed');
-  raise exception 'FALHOU: adicionou peça em solicitação cancelada';
+  raise exception 'FALHOU: adicionou peça em solicitação cancelada' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  solicitação cancelada não recebe peça';
 end $$;
 reset role;
@@ -246,13 +246,13 @@ select tests.login('cli_nortis');
 set role authenticated;
 do $$ begin
   insert into public.comments (request_id, corpo) values ('10000000-0000-0000-0000-000000000001', 'oi');
-  raise exception 'FALHOU: comentou em cancelada';
+  raise exception 'FALHOU: comentou em cancelada' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  sem comentários em solicitação cancelada';
 end $$;
 do $$ begin
   insert into storage.objects (bucket_id, name)
   values ('criativos', tests.id('nortis') || '/10000000-0000-0000-0000-000000000001/x/hack.png');
-  raise exception 'FALHOU: cliente enviou arquivo';
+  raise exception 'FALHOU: cliente enviou arquivo' using errcode = 'TF001';
 exception when insufficient_privilege then raise notice 'ok  cliente não envia arquivos';
 end $$;
 reset role;
