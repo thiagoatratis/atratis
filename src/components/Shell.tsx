@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { LuBuilding2, LuHistory, LuImages, LuLogOut, LuMenu, LuSettings, LuUserRound, LuUsers, LuWallet, LuX } from "react-icons/lu";
+import { LuBuilding2, LuHistory, LuImages, LuLogOut, LuMenu, LuPresentation, LuSettings, LuUserRound, LuUsers, LuWallet, LuX } from "react-icons/lu";
 import { Link, useRouter } from "../lib/router";
 import { useAuth } from "../lib/auth";
 import { PERFIL_ROTULO } from "../types";
@@ -9,6 +9,7 @@ interface ItemMenu { to: string; rotulo: string; icone: ReactNode; so?: "admin" 
 const MENU: ItemMenu[] = [
   { to: "/criativos", rotulo: "Criativos", icone: <LuImages /> },
   { to: "/orcamentos", rotulo: "Orçamentos", icone: <LuWallet /> },
+  { to: "/planos", rotulo: "Planos", icone: <LuPresentation /> },
   { to: "/clientes", rotulo: "Clientes", icone: <LuBuilding2 /> },
   { to: "/usuarios", rotulo: "Usuários", icone: <LuUsers />, so: "admin" },
   { to: "/historico", rotulo: "Histórico", icone: <LuHistory />, so: "admin" },

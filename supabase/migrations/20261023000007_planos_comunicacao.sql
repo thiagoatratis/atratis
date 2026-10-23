@@ -98,6 +98,7 @@ create table public.plan_section_decisions (
   version_id  uuid not null references public.plan_versions (id) on delete restrict,
   plan_id     uuid not null references public.plans (id) on delete restrict,
   client_id   uuid not null references public.clients (id) on delete restrict,
+  secao_nome  text not null,
   decisao     text not null,
   comentario  text,
   slides      integer[] not null default '{}',
@@ -630,9 +631,9 @@ begin
   end if;
 
   select * into v_eu from public.profiles where id = auth.uid();
-  insert into public.plan_section_decisions (section_id, version_id, plan_id, client_id, decisao, comentario, slides,
+  insert into public.plan_section_decisions (section_id, version_id, plan_id, client_id, secao_nome, decisao, comentario, slides,
                                              user_id, user_email, user_nome)
-  values (v_s.id, v_v.id, v_p.id, v_p.client_id, p_decisao, nullif(btrim(coalesce(p_comentario, '')), ''), v_slides,
+  values (v_s.id, v_v.id, v_p.id, v_p.client_id, v_s.nome, p_decisao, nullif(btrim(coalesce(p_comentario, '')), ''), v_slides,
           v_eu.id, v_eu.email, v_eu.nome);
 
   perform set_config('app.transicao', 'on', true);
