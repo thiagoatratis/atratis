@@ -1,5 +1,6 @@
 // Transforma eventos da auditoria em frases legíveis.
 import type { EventoAuditoria, Profile } from "../types";
+import { slidesCitados } from "./planos";
 import { PERFIL_ROTULO } from "../types";
 import { formatarCEP, formatarCNPJ } from "./format";
 import { formatarMes, formatarMoeda } from "./dinheiro";
@@ -218,7 +219,7 @@ export function descrever(e: EventoAuditoria, pessoas: Map<string, Pick<Profile,
       return { titulo: "Versão do plano alterada", detalhes: mudancas.filter((m) => !/^Pdf/i.test(m)) };
     }
     case "plano.decisao.criado": {
-      const slides = Array.isArray(reg.slides) && reg.slides.length ? ` (slides ${(reg.slides as number[]).join(", ")})` : "";
+      const slides = Array.isArray(reg.slides) && reg.slides.length ? ` (${slidesCitados(reg.slides as number[])})` : "";
       return {
         titulo: reg.decisao === "aprovada"
           ? `Seção "${String(reg.secao_nome ?? "")}" aprovada por ${String(reg.user_nome || reg.user_email || "cliente")}`

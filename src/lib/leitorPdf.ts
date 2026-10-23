@@ -25,8 +25,17 @@ function carregarPdfJs(): Promise<ModuloPdf> {
 }
 
 export async function abrirPdf(fonte: string | ArrayBuffer): Promise<DocumentoPdf> {
-  const pdfjs = await carregarPdfJs();
-  const tarefa = pdfjs.getDocument(typeof fonte === "string" ? { url: fonte } : { data: new Uint8Array(fonte) });
+  let pdfjs: ModuloPdf;
+  try {
+    pdfjs = await carregarPdfJs();
+  } catch {
+    // Costuma acontecer quando o site foi atualizado com a página aberta.
+    throw new ErroApp("Não foi possível carregar o leitor de PDF. Recarregue a página e tente de novo.");
+  }
+  // Do Storage, baixa só os trechos necessários (em vez do arquivo inteiro de uma vez).
+  const tarefa = pdfjs.getDocument(typeof fonte === "string"
+    ? { url: fonte, disableAutoFetch: true }
+    : { data: new Uint8Array(fonte) });
   try {
     return await tarefa.promise;
   } catch (e) {
@@ -51,18 +60,25 @@ export async function contarPaginas(arquivo: File): Promise<number> {
 
 const cache = new WeakMap<DocumentoPdf, Map<string, Promise<string>>>();
 const urlsCriadas = new WeakMap<DocumentoPdf, string[]>();
+const fechados = new WeakSet<DocumentoPdf>();
 
-// Fila simples: no máximo duas páginas desenhando ao mesmo tempo.
+const cancelado = () => new DOMException("Desenho cancelado", "AbortError");
+export const foiCancelado = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
+
+// No máximo duas páginas desenhando ao mesmo tempo. O pedido mais recente vai
+// primeiro (é o que está na tela agora), e pedidos de slides que já saíram da
+// tela são descartados antes de começar.
 let ativos = 0;
 const fila: (() => void)[] = [];
-async function naVez<T>(fn: () => Promise<T>): Promise<T> {
+async function naVez<T>(fn: () => Promise<T>, sinal?: AbortSignal): Promise<T> {
   if (ativos >= 2) await new Promise<void>((r) => fila.push(r));
   ativos++;
   try {
+    if (sinal?.aborted) throw cancelado();
     return await fn();
   } finally {
     ativos--;
-    fila.shift()?.();
+    fila.pop()?.();
   }
 }
 
@@ -77,7 +93,8 @@ export async function proporcaoPagina(doc: DocumentoPdf, numero: number): Promis
  * Desenha a página e devolve o endereço de uma imagem JPEG.
  * `larguraPx` é a largura final em pixels (já considerando telas de alta densidade).
  */
-export function imagemDaPagina(doc: DocumentoPdf, numero: number, larguraPx: number): Promise<string> {
+export function imagemDaPagina(doc: DocumentoPdf, numero: number, larguraPx: number, sinal?: AbortSignal): Promise<string> {
+  if (fechados.has(doc)) return Promise.reject(cancelado());
   // Larguras parecidas reaproveitam a mesma imagem.
   const faixa = Math.min(1800, Math.max(160, Math.ceil(larguraPx / 160) * 160));
   let mapa = cache.get(doc);
@@ -101,6 +118,10 @@ export function imagemDaPagina(doc: DocumentoPdf, numero: number, larguraPx: num
       const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.88));
       if (!blob) throw new ErroApp("Não foi possível desenhar a página.");
       const url = URL.createObjectURL(blob);
+      if (fechados.has(doc)) {
+        URL.revokeObjectURL(url);
+        throw cancelado();
+      }
       urlsCriadas.set(doc, [...(urlsCriadas.get(doc) ?? []), url]);
       return url;
     } finally {
@@ -108,7 +129,7 @@ export function imagemDaPagina(doc: DocumentoPdf, numero: number, larguraPx: num
       canvas.height = 0;
       pagina.cleanup();
     }
-  });
+  }, sinal);
   promessa.catch(() => mapa!.delete(chave));
   mapa.set(chave, promessa);
   return promessa;
@@ -116,6 +137,7 @@ export function imagemDaPagina(doc: DocumentoPdf, numero: number, larguraPx: num
 
 /** Libera o documento e as imagens geradas a partir dele. */
 export function fecharPdf(doc: DocumentoPdf): void {
+  fechados.add(doc);
   for (const url of urlsCriadas.get(doc) ?? []) URL.revokeObjectURL(url);
   urlsCriadas.delete(doc);
   cache.delete(doc);

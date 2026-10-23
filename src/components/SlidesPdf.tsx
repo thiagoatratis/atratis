@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { LuChevronLeft, LuChevronRight, LuDownload } from "react-icons/lu";
-import { abrirPdf, fecharPdf, imagemDaPagina, proporcaoPagina, type DocumentoPdf } from "../lib/leitorPdf";
-import { urlPdfPlano } from "../lib/planos";
+import { abrirPdf, fecharPdf, foiCancelado, imagemDaPagina, proporcaoPagina, type DocumentoPdf } from "../lib/leitorPdf";
+import { esquecerUrlPdfPlano, urlPdfPlano } from "../lib/planos";
 import { Botao, Modal } from "./ui";
 
 /** Abre o PDF do plano guardado no Storage. Fecha e libera a memória ao sair. */
@@ -35,7 +35,14 @@ export function usePdfPlano(caminho: string | null | undefined) {
     };
   }, [caminho, tentativa]);
 
-  return { ...estado, tentarDeNovo: () => setTentativa((n) => n + 1) };
+  return {
+    ...estado,
+    // Pede um endereço novo (o anterior pode ter vencido com a aba parada).
+    tentarDeNovo: () => {
+      if (caminho) esquecerUrlPdfPlano(caminho);
+      setTentativa((n) => n + 1);
+    },
+  };
 }
 
 /**
@@ -52,7 +59,10 @@ export function Slide({
   const [visivel, setVisivel] = useState(false);
   const [src, setSrc] = useState<string | null>(null);
   const [falhou, setFalhou] = useState(false);
+  const [tentativa, setTentativa] = useState(0);
 
+  // Acompanha se o slide está perto da tela. Ao sair antes de ser desenhado,
+  // o pedido é cancelado (rolar um plano longo não enfileira dezenas de slides).
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -61,25 +71,30 @@ export function Slide({
       return;
     }
     const obs = new IntersectionObserver((itens) => {
-      if (itens.some((i) => i.isIntersecting)) {
-        setVisivel(true);
-        obs.disconnect();
-      }
-    }, { rootMargin: "800px 0px" });
+      setVisivel(itens.some((i) => i.isIntersecting));
+    }, { rootMargin: "600px 0px" });
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
 
   useEffect(() => {
-    if (!visivel || !ref.current) return;
-    let vivo = true;
+    if (!visivel || src || !ref.current) return;
+    const controle = new AbortController();
     const largura = ref.current.clientWidth * Math.min(window.devicePixelRatio || 1, 2);
     setFalhou(false);
-    imagemDaPagina(doc, pagina, largura)
-      .then((u) => { if (vivo) setSrc(u); })
-      .catch(() => { if (vivo) setFalhou(true); });
-    return () => { vivo = false; };
-  }, [visivel, doc, pagina]);
+    imagemDaPagina(doc, pagina, largura, controle.signal)
+      .then((u) => { if (!controle.signal.aborted) setSrc(u); })
+      .catch((e) => {
+        if (controle.signal.aborted) return;
+        // Cancelado por outro pedido da mesma imagem: pede de novo (poucas vezes).
+        if (foiCancelado(e)) {
+          if (tentativa < 3) setTentativa((n) => n + 1);
+        } else {
+          setFalhou(true);
+        }
+      });
+    return () => controle.abort();
+  }, [visivel, src, doc, pagina, tentativa]);
 
   const texto = rotulo ?? `Slide ${pagina}`;
   const conteudo = (
@@ -95,7 +110,14 @@ export function Slide({
           {conteudo}
         </button>
       ) : conteudo}
-      <span className="slide-rotulo">{texto}</span>
+      <span className="slide-rotulo">
+        {texto}
+        {falhou && (
+          <button type="button" className="slide-tentar" onClick={() => { setFalhou(false); setTentativa((n) => n + 1); }}>
+            Tentar de novo
+          </button>
+        )}
+      </span>
       {children}
     </div>
   );

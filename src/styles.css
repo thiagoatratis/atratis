@@ -616,3 +616,5 @@ a.celula-titulo:hover { text-decoration: underline; text-underline-offset: 3px; 
   .faixa-slides { grid-auto-columns: 150px; }
   .secao-resumo-topo .selo { margin-left: 0; }
 }
+.slide-rotulo { display: flex; align-items: center; gap: 8px; }
+.slide-tentar { padding: 0; border: 0; background: none; color: var(--marca-escura); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }

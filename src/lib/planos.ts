@@ -89,7 +89,7 @@ export function validarPdf(arquivo: File): string | null {
   const ehPdf = arquivo.type === "application/pdf" || /\.pdf$/i.test(arquivo.name);
   if (!ehPdf) return "Escolha o arquivo PDF exportado do Claude Design.";
   if (arquivo.size > LIMITE_PDF_MB * 1024 * 1024) {
-    return `O PDF tem ${(arquivo.size / 1024 / 1024).toFixed(0)} MB e o limite é ${LIMITE_PDF_MB} MB. Exporte de novo com imagens mais leves.`;
+    return `O PDF tem ${(arquivo.size / 1024 / 1024).toFixed(1).replace(".", ",")} MB e o limite é ${LIMITE_PDF_MB} MB. Exporte de novo com imagens mais leves.`;
   }
   return null;
 }
@@ -113,7 +113,11 @@ export async function enviarPdfPlano(
   const up = await supabase.storage.from(BUCKET).upload(caminho, arquivo, { contentType: "application/pdf", upsert: false });
   if (up.error) {
     const grande = /size|exceed|large/i.test(up.error.message);
-    throw new ErroApp(grande ? `O PDF passou do limite de ${LIMITE_PDF_MB} MB.` : `O PDF não subiu: ${up.error.message}`);
+    if (grande) throw new ErroApp(`O PDF passou do limite de ${LIMITE_PDF_MB} MB.`);
+    if (/row-level security|policy|unauthorized|403/i.test(up.error.message)) {
+      throw new ErroApp("Você não tem permissão para enviar o PDF deste plano.");
+    }
+    throw new ErroApp("O PDF não subiu. Verifique a conexão e tente de novo.");
   }
   const { error } = await supabase.rpc("definir_pdf_plano", { p_version: ctx.versionId, p_path: caminho, p_paginas: paginas });
   if (error) {
@@ -125,17 +129,35 @@ export async function enviarPdfPlano(
   return paginas;
 }
 
+// O leitor busca trechos do PDF aos poucos, então o endereço vale por 6 horas
+// (aba parada no celular e retomada depois continua funcionando).
 const cacheUrls = new Map<string, { url: string; ate: number }>();
 
-export async function urlPdfPlano(caminho: string, baixar?: string): Promise<string> {
-  const chave = `${caminho}|${baixar ?? ""}`;
-  const c = cacheUrls.get(chave);
+export async function urlPdfPlano(caminho: string): Promise<string> {
+  const c = cacheUrls.get(caminho);
   if (c && c.ate > Date.now()) return c.url;
-  const { data, error } = await supabase.storage.from(BUCKET)
-    .createSignedUrl(caminho, 3600, baixar ? { download: baixar } : undefined);
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(caminho, 6 * 3600);
   if (error || !data) throw new ErroApp("Não foi possível abrir o PDF do plano.");
-  cacheUrls.set(chave, { url: data.signedUrl, ate: Date.now() + 50 * 60 * 1000 });
+  cacheUrls.set(caminho, { url: data.signedUrl, ate: Date.now() + 5 * 3600 * 1000 });
   return data.signedUrl;
+}
+
+export function esquecerUrlPdfPlano(caminho: string): void {
+  cacheUrls.delete(caminho);
+}
+
+/** Baixa o PDF e salva com nome legível (funciona também no iPhone). */
+export async function baixarPdfPlano(caminho: string, nome: string): Promise<void> {
+  const { data, error } = await supabase.storage.from(BUCKET).download(caminho);
+  if (error || !data) throw new ErroApp("Não foi possível baixar o PDF.");
+  const url = URL.createObjectURL(data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nome;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 // ---------------- Seções e fluxo ----------------
@@ -201,3 +223,6 @@ export function nomeArquivoPlano(p: Plano, v: VersaoPlano): string {
   const base = p.titulo.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
   return `${base || "plano"}-v${v.numero}.pdf`;
 }
+
+/** "1 seção", "3 seções". */
+export const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;

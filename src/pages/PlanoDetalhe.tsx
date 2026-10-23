@@ -6,8 +6,8 @@ import { useAsync } from "../lib/useAsync";
 import { listarClientes, listarUsuarios } from "../lib/api";
 import {
   SECOES_SUGERIDAS, cancelarPlano, contagemSecoes, enviarPdfPlano, enviarPlano, listarDecisoesPlano, listarVersoesPlano,
-  nomeArquivoPlano, novaVersaoPlano, obterPlano, paginasDaSecao, salvarNotaVersao, salvarSecoes, slidesCitados,
-  urlPdfPlano, type SecaoEditavel,
+  baixarPdfPlano, nomeArquivoPlano, novaVersaoPlano, obterPlano, paginasDaSecao, plural, salvarNotaVersao, salvarSecoes,
+  slidesCitados, type SecaoEditavel,
 } from "../lib/planos";
 import type { DocumentoPdf } from "../lib/leitorPdf";
 import { Link } from "../lib/router";
@@ -24,7 +24,7 @@ import {
 } from "../types";
 
 /** Aprovação de uma versão anterior que pode ser mantida numa seção nova. */
-interface AprovacaoAnterior { id: string; nome: string; versao: number; paginas: string }
+interface AprovacaoAnterior { id: string; nome: string; versao: number; paginas: string; tamanho: number }
 
 export function PlanoDetalhe({ id }: { id: string }) {
   const avisar = useAviso();
@@ -57,18 +57,22 @@ export function PlanoDetalhe({ id }: { id: string }) {
   const vista = versoes.find((v) => v.id === verId) ?? atual;
   const pdf = usePdfPlano(vista?.pdf_path);
 
-  // Seções aprovadas em versões anteriores (a original de cada aprovação).
+  // Aprovações que ainda valem: as finais da última versão enviada (a mesma
+  // regra do banco). Devolve a aprovação original, com nome e tamanho dela.
   const aprovadasAnteriores = useMemo<AprovacaoAnterior[]>(() => {
-    const m = new Map<string, AprovacaoAnterior>();
-    for (const v of versoes) {
-      if (v.id === atual?.id) continue;
-      for (const s of v.secoes) {
-        if (s.status === "aprovada" && !s.mantem_aprovacao_de) {
-          m.set(s.id, { id: s.id, nome: s.nome, versao: v.numero, paginas: paginasDaSecao(s) });
-        }
-      }
-    }
-    return [...m.values()];
+    const ultimaEnviada = versoes.filter((v) => v.id !== atual?.id && v.status !== "rascunho").at(-1);
+    if (!ultimaEnviada) return [];
+    const original = new Map<string, { secao: SecaoPlano; versao: number }>();
+    for (const v of versoes) for (const s of v.secoes) original.set(s.id, { secao: s, versao: v.numero });
+    return ultimaEnviada.secoes
+      .filter((s) => s.status === "aprovada" && (ultimaEnviada.status === "concluida" || s.mantem_aprovacao_de))
+      .map((s) => {
+        const o = original.get(s.mantem_aprovacao_de ?? s.id)!;
+        return {
+          id: o.secao.id, nome: o.secao.nome, versao: o.versao, paginas: paginasDaSecao(o.secao),
+          tamanho: o.secao.pagina_fim - o.secao.pagina_inicio + 1,
+        };
+      });
   }, [versoes, atual?.id]);
 
   // Onde cada seção foi aprovada (para mostrar "aprovação mantida da versão 1").
@@ -110,7 +114,7 @@ export function PlanoDetalhe({ id }: { id: string }) {
   async function baixar() {
     if (!vista?.pdf_path) return;
     try {
-      window.open(await urlPdfPlano(vista.pdf_path, nomeArquivoPlano(p, vista)), "_blank", "noopener");
+      await baixarPdfPlano(vista.pdf_path, nomeArquivoPlano(p, vista));
     } catch (e) {
       avisar(e instanceof Error ? e.message : String(e), "erro");
     }
@@ -145,13 +149,13 @@ export function PlanoDetalhe({ id }: { id: string }) {
       )}
       {p.status === "ajustes_solicitados" && (
         <div className="aviso aviso-erro">
-          <p>O cliente pediu ajuste em {ajustes.length === 1 ? "1 seção" : `${ajustes.length} seções`}: {ajustes.map((s) => s.nome).join(", ")}.
-            Crie uma versão nova, suba o PDF corrigido e reenvie. As seções aprovadas continuam aprovadas.</p>
+          <p>O cliente pediu ajuste em {plural(ajustes.length, "seção", "seções")}: {ajustes.map((s) => s.nome).join(", ")}.
+            Crie uma versão nova, suba o PDF corrigido e reenvie. As seções aprovadas que não mudarem continuam aprovadas.</p>
         </div>
       )}
       {(p.status === "aguardando_aprovacao" || p.status === "em_analise") && (
         <div className="aviso aviso-info">
-          <p>A versão {atual?.numero} está com o cliente ({contagemSecoes(atual).pendentes} seção(ões) sem decisão).
+          <p>A versão {atual?.numero} está com o cliente ({plural(contagemSecoes(atual).pendentes, "seção", "seções")} sem decisão).
             Para mudar algo agora, crie uma versão nova: a que está com ele fica substituída.</p>
         </div>
       )}
@@ -165,7 +169,11 @@ export function PlanoDetalhe({ id }: { id: string }) {
                 <div className="versoes" role="group" aria-label="Versões">
                   {versoes.map((v) => (
                     <button key={v.id} type="button" className={v.id === vista?.id ? "on" : ""} aria-pressed={v.id === vista?.id}
-                      onClick={() => setVerId(v.id)} title={STATUS_VERSAO_PLANO[v.status].rotulo}>
+                      onClick={() => {
+                        if (v.id === vista?.id) return;
+                        if (secoesSujas && !window.confirm("As seções têm mudanças não salvas. Sair desta versão e perder as mudanças?")) return;
+                        setVerId(v.id);
+                      }} title={STATUS_VERSAO_PLANO[v.status].rotulo}>
                       v{v.numero}
                     </button>
                   ))}
@@ -226,17 +234,18 @@ export function PlanoDetalhe({ id }: { id: string }) {
         onPronto={() => { setCancelando(false); avisar("Plano cancelado."); void dados.reload(); }} />
       <AvisarCliente aberto={avisarCliente} onFechar={() => setAvisarCliente(false)}
         caminho={`/planos/${p.id}`} clientId={p.client_id}
-        mensagem={(link, pessoal) => mensagemPlano(p, atual, link, pessoal)} />
+        mensagem={(link, pessoal) => mensagemPlano(p, versoes.filter((v) => v.status !== "rascunho").at(-1), link, pessoal)} />
     </>
   );
 }
 
+/** Mensagem sobre a versão que o cliente vê agora (a última enviada). */
 function mensagemPlano(p: Plano, v: VersaoPlano | undefined, link: string, pessoal: boolean): string {
   const novaVersao = (v?.numero ?? 1) > 1;
   return [
     novaVersao
-      ? `Olá! Ajustamos o ${p.titulo} conforme os seus comentários. As seções que você já aprovou continuam aprovadas; falta só olhar as que mudaram.`
-      : `Olá! O ${p.titulo} está pronto para a sua aprovação. Ele está dividido em seções: em cada uma você aprova ou pede ajuste, e pode comentar citando os slides.`,
+      ? `Olá! Preparamos uma versão nova do plano "${p.titulo}". As seções já aprovadas que não mudaram continuam aprovadas; falta olhar só as que mudaram.`
+      : `Olá! O plano "${p.titulo}" está pronto para a sua aprovação. Ele está dividido em seções: em cada uma você aprova ou pede ajuste, e pode comentar citando os slides.`,
     "",
     `Acesse: ${link}`,
     "",
@@ -349,21 +358,32 @@ function EditorSecoes({ versao, paginas, doc, proporcao, aprovadasAnteriores, on
   const [erro, setErro] = useState<string | null>(null);
   const [ampliar, setAmpliar] = useState<number | null>(null);
 
-  const sujo = JSON.stringify(secoes) !== JSON.stringify(inicial) || !versao.secoes.length;
+  const fim = (i: number) => (i + 1 < secoes.length ? secoes[i + 1].inicio - 1 : paginas);
+  const lista: SecaoEditavel[] = secoes.map((s, i) => ({
+    nome: s.nome.trim(), pagina_inicio: s.inicio, pagina_fim: fim(i), requer_aprovacao: s.requer, mantem_aprovacao_de: s.requer ? s.mantem : null,
+  }));
+  const salvas: SecaoEditavel[] = versao.secoes.map((s) => ({
+    nome: s.nome, pagina_inicio: s.pagina_inicio, pagina_fim: s.pagina_fim, requer_aprovacao: s.requer_aprovacao, mantem_aprovacao_de: s.mantem_aprovacao_de,
+  }));
+  // Compara também onde cada seção termina: um PDF com mais slides muda o fim da última.
+  const sujo = !versao.secoes.length || JSON.stringify(lista) !== JSON.stringify(salvas);
   useEffect(() => { onSujo(sujo); }, [sujo, onSujo]);
   useEffect(() => () => onSujo(false), [onSujo]);
 
-  const fim = (i: number) => (i + 1 < secoes.length ? secoes[i + 1].inicio - 1 : paginas);
   const usadas = new Set(secoes.map((s) => s.mantem).filter(Boolean));
 
   function mudar(i: number, campos: Partial<SecaoTela>) {
     setSecoes((l) => l.map((s, j) => (j === i ? { ...s, ...campos } : s)));
   }
+  // Mudar onde uma seção começa ou termina muda o conteúdo dela: a aprovação mantida cai.
   function dividir(pagina: number) {
-    setSecoes((l) => [...l, { inicio: pagina, nome: "", requer: true, mantem: null }].sort((a, b) => a.inicio - b.inicio));
+    setSecoes((l) => [
+      ...l.map((s, j) => (s.inicio < pagina && (j + 1 >= l.length || l[j + 1].inicio > pagina) ? { ...s, mantem: null } : s)),
+      { inicio: pagina, nome: "", requer: true, mantem: null },
+    ].sort((a, b) => a.inicio - b.inicio));
   }
   function juntar(i: number) {
-    setSecoes((l) => l.filter((_, j) => j !== i));
+    setSecoes((l) => l.filter((_, j) => j !== i).map((s, j) => (j === i - 1 ? { ...s, mantem: null } : s)));
   }
 
   async function salvar() {
@@ -371,9 +391,6 @@ function EditorSecoes({ versao, paginas, doc, proporcao, aprovadasAnteriores, on
     const semNome = secoes.findIndex((s) => !s.nome.trim());
     if (semNome >= 0) return setErro(`Dê um nome à seção que começa no slide ${secoes[semNome].inicio}.`);
     if (!secoes.some((s) => s.requer)) return setErro("Pelo menos uma seção precisa ser aprovada pelo cliente.");
-    const lista: SecaoEditavel[] = secoes.map((s, i) => ({
-      nome: s.nome.trim(), pagina_inicio: s.inicio, pagina_fim: fim(i), requer_aprovacao: s.requer, mantem_aprovacao_de: s.requer ? s.mantem : null,
-    }));
     setSalvando(true);
     try {
       await salvarSecoes(versao.id, lista);
@@ -395,7 +412,8 @@ function EditorSecoes({ versao, paginas, doc, proporcao, aprovadasAnteriores, on
       <datalist id="secoes-sugeridas">{SECOES_SUGERIDAS.map((n) => <option key={n} value={n} />)}</datalist>
 
       {secoes.map((s, i) => {
-        const opcoes = aprovadasAnteriores.filter((a) => a.id === s.mantem || !usadas.has(a.id));
+        const tamanho = fim(i) - s.inicio + 1;
+        const opcoes = aprovadasAnteriores.filter((a) => a.tamanho === tamanho && (a.id === s.mantem || !usadas.has(a.id)));
         return (
           <section key={s.inicio} className={`secao-editor ${s.mantem ? "secao-mantida" : ""}`} aria-label={s.nome || `Seção ${i + 1}`}>
             <div className="secao-editor-topo">
@@ -422,7 +440,7 @@ function EditorSecoes({ versao, paginas, doc, proporcao, aprovadasAnteriores, on
                 <select aria-label="Aprovação" value={s.mantem ?? ""} onChange={(e) => mudar(i, { mantem: e.target.value || null })}>
                   <option value="">Mudou: precisa de nova aprovação</option>
                   {opcoes.map((a) => (
-                    <option key={a.id} value={a.id}>Sem mudança: manter aprovação de "{a.nome}" (v{a.versao}, {a.paginas})</option>
+                    <option key={a.id} value={a.id}>Não mudou: manter a aprovação de "{a.nome}" (v{a.versao}, {a.paginas})</option>
                   ))}
                 </select>
               )}
@@ -446,7 +464,7 @@ function EditorSecoes({ versao, paginas, doc, proporcao, aprovadasAnteriores, on
       <div className="acoes-linha barra-salvar">
         <Botao variante="primario" disabled={!sujo} carregando={salvando} onClick={() => void salvar()}>Salvar seções</Botao>
         <span className="suave">
-          {secoes.length} {secoes.length === 1 ? "seção" : "seções"}, {secoes.filter((s) => s.requer && !s.mantem).length} para o cliente decidir
+          {plural(secoes.length, "seção", "seções")}, {secoes.filter((s) => s.requer && !s.mantem).length} para o cliente decidir
           {sujo && versao.secoes.length ? ". Há mudanças não salvas." : ""}
         </span>
       </div>
@@ -465,7 +483,7 @@ function ResumoSecoes({ versao, decisoes, origem, pdf, titulo, baixar }: {
   pdf: Pdf; titulo: string; baixar: () => void;
 }) {
   const [ampliar, setAmpliar] = useState<{ pagina: number; secao: SecaoPlano } | null>(null);
-  if (!versao.secoes.length) return <Vazio titulo="Esta versão não tem seções">Ela foi substituída antes de ser montada.</Vazio>;
+  if (!versao.secoes.length) return <Vazio titulo="Esta versão não tem seções marcadas">Ela não chegou a ser enviada ao cliente.</Vazio>;
   return (
     <div className="pilha">
       {pdf.erro && <AvisoErro erro={pdf.erro} tentarDeNovo={pdf.tentarDeNovo} />}
@@ -544,8 +562,8 @@ function NovaVersao({ aberto, plano, onFechar, onPronto }: {
         }}>Criar versão nova</Botao>
       </>}>
       <div className="pilha">
-        <p>A versão nova começa com o mesmo PDF e as mesmas seções. As seções aprovadas já vêm marcadas para manter a aprovação;
-          se mudar alguma delas, troque para "precisa de nova aprovação".
+        <p>A versão nova começa com o mesmo PDF e as mesmas seções. As seções que o cliente aprovou de forma final já vêm marcadas
+          para manter a aprovação; se mudar alguma delas, troque para "Mudou: precisa de nova aprovação".
           {comCliente && " A versão que está com o cliente fica substituída e ele não consegue mais decidir nela."}
         </p>
         <CampoTexto rotulo="O que muda nesta versão?" rows={2} value={observacao} onChange={(e) => setObservacao(e.target.value)}

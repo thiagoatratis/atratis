@@ -3,8 +3,8 @@ import { LuArrowLeft, LuCheck, LuDownload, LuMessageSquare } from "react-icons/l
 import { useAsync } from "../lib/useAsync";
 import { listarClientes, listarVinculos } from "../lib/api";
 import {
-  contagemSecoes, decidirSecao, listarDecisoesPlano, listarVersoesPlano, nomeArquivoPlano, obterPlano, paginasDaSecao,
-  registrarVisualizacaoPlano, urlPdfPlano,
+  baixarPdfPlano, contagemSecoes, decidirSecao, listarDecisoesPlano, listarVersoesPlano, nomeArquivoPlano, obterPlano,
+  paginasDaSecao, plural, registrarVisualizacaoPlano,
 } from "../lib/planos";
 import type { DocumentoPdf } from "../lib/leitorPdf";
 import { useAuth } from "../lib/auth";
@@ -60,7 +60,7 @@ export function AprovacaoPlano({ id }: { id: string }) {
   async function baixar() {
     if (!atual?.pdf_path) return;
     try {
-      window.open(await urlPdfPlano(atual.pdf_path, nomeArquivoPlano(p, atual)), "_blank", "noopener");
+      await baixarPdfPlano(atual.pdf_path, nomeArquivoPlano(p, atual));
     } catch (e) {
       avisar(e instanceof Error ? e.message : String(e), "erro");
     }
@@ -91,7 +91,7 @@ export function AprovacaoPlano({ id }: { id: string }) {
         <div className="aprovacao-meta">
           <Selo tom={st.tom}>{st.rotuloCliente}</Selo>
           {atual && atual.numero > 1 && <span>Versão {atual.numero}</span>}
-          {c.total > 0 && <span>{c.total - c.pendentes} de {c.total} seções decididas</span>}
+          {c.total > 0 && <span>{c.total - c.pendentes} de {plural(c.total, "seção decidida", "seções decididas")}</span>}
           {atual?.pdf_path && <Botao variante="fantasma" onClick={() => void baixar()}><LuDownload /> Baixar PDF</Botao>}
         </div>
       </header>
@@ -100,7 +100,7 @@ export function AprovacaoPlano({ id }: { id: string }) {
         <div className="aviso aviso-atencao"><p>A Atratis cancelou este plano em {formatarData(p.cancelado_em)}. Não há nada para decidir.</p></div>
       )}
       {p.status === "em_revisao_interna" && (
-        <div className="aviso aviso-info"><p>A Atratis está ajustando o plano. Você recebe a versão nova em breve; o que já aprovou continua aprovado.</p></div>
+        <div className="aviso aviso-info"><p>A Atratis está ajustando o plano. Você recebe a versão nova em breve; as seções aprovadas que não mudarem continuam aprovadas.</p></div>
       )}
       {p.status === "ajustes_solicitados" && (
         <div className="aviso aviso-info"><p>Suas respostas foram enviadas. A Atratis vai ajustar {c.ajustes === 1 ? "a seção" : `as ${c.ajustes} seções`} em que você pediu ajuste e mandar uma versão nova.</p></div>
@@ -158,7 +158,7 @@ export function AprovacaoPlano({ id }: { id: string }) {
                 <li key={v.id}>
                   <strong>Versão {v.numero}</strong>:{" "}
                   {v.status === "substituida" ? "substituída pela Atratis antes de você terminar"
-                    : `${cv.aprovadas} seção(ões) aprovada(s)${cv.ajustes ? `, ajuste pedido em ${v.secoes.filter((s) => s.status === "ajuste_solicitado").map((s) => s.nome).join(", ")}` : ""}`}
+                    : `${plural(cv.aprovadas, "seção aprovada", "seções aprovadas")}${cv.ajustes ? `, ajuste pedido em ${v.secoes.filter((s) => s.status === "ajuste_solicitado").map((s) => s.nome).join(", ")}` : ""}`}
                 </li>
               );
             })}
@@ -193,7 +193,8 @@ function SecaoCliente({ secao: s, doc, proporcao, decisoes, aberto, podeAprovar,
 
   const paginas = Array.from({ length: s.pagina_fim - s.pagina_inicio + 1 }, (_, k) => s.pagina_inicio + k);
   const st = STATUS_SECAO[s.status];
-  const mostrarBotoes = decide && (s.status === "pendente" || mudando) && !pedindo;
+  // Só decide depois que os slides aparecem.
+  const mostrarBotoes = decide && !!doc && (s.status === "pendente" || mudando) && !pedindo;
 
   async function decidir(tipo: "aprovada" | "ajuste_solicitado") {
     if (tipo === "ajuste_solicitado" && texto.trim().length < 3) return setErro("Conte o que precisa ser ajustado.");
@@ -220,7 +221,7 @@ function SecaoCliente({ secao: s, doc, proporcao, decisoes, aberto, podeAprovar,
         <span className="suave">{paginasDaSecao(s)}</span>
         <Selo tom={st.tom}>{mantida ? "Aprovada antes" : s.requer_aprovacao ? st.rotulo : "Para conhecer"}</Selo>
       </div>
-      {mantida && <p className="suave pequeno">Você já aprovou esta seção e ela não mudou nesta versão.</p>}
+      {mantida && <p className="suave pequeno">Esta seção já foi aprovada e não mudou nesta versão.</p>}
       {!s.requer_aprovacao && <p className="suave pequeno">Seção informativa: não precisa de decisão.</p>}
 
       {verSlides ? (
@@ -228,7 +229,7 @@ function SecaoCliente({ secao: s, doc, proporcao, decisoes, aberto, podeAprovar,
           <div className="slides-coluna">
             {paginas.map((n) => <Slide key={n} doc={doc} pagina={n} proporcao={proporcao} onAbrir={() => onAmpliar(n)} />)}
           </div>
-        ) : null
+        ) : <p className="suave pequeno">Os slides aparecem aqui assim que o plano terminar de abrir.</p>
       ) : (
         <Botao variante="fantasma" onClick={() => setVerSlides(true)}>Ver os slides desta seção</Botao>
       )}
@@ -246,7 +247,7 @@ function SecaoCliente({ secao: s, doc, proporcao, decisoes, aberto, podeAprovar,
           </div>
         </>
       )}
-      {decide && pedindo && (
+      {decide && !!doc && pedindo && (
         <div className="pedido-alteracao">
           <CampoTexto rotulo="O que precisa ser ajustado nesta seção?" rows={3} value={texto} autoFocus maxLength={4000}
             onChange={(e) => setTexto(e.target.value)} erro={erro} />
@@ -275,7 +276,7 @@ function SecaoCliente({ secao: s, doc, proporcao, decisoes, aberto, podeAprovar,
       )}
       {decide && !mudando && !pedindo && s.status !== "pendente" && (
         <div>
-          <Botao variante="fantasma" onClick={() => setMudando(true)}>Mudar minha decisão</Botao>
+          <Botao variante="fantasma" onClick={() => setMudando(true)}>Mudar a decisão</Botao>
         </div>
       )}
     </section>
