@@ -6,7 +6,7 @@ import { useAsync } from "../lib/useAsync";
 import { listarClientes, listarUsuarios } from "../lib/api";
 import {
   SECOES_SUGERIDAS, cancelarPlano, contagemSecoes, enviarPdfPlano, enviarPlano, listarDecisoesPlano, listarVersoesPlano,
-  baixarPdfPlano, definirLinkPlano, nomeArquivoPlano, novaVersaoPlano, obterPlano, paginasDaSecao, plural, removerMaterialPlano,
+  baixarPdfPlano, chaveLink, definirLinkPlano, nomeArquivoPlano, novaVersaoPlano, obterPlano, paginasDaSecao, plural, removerMaterialPlano,
   salvarNotaVersao, salvarSecoes, slidesCitados, validarLink, type SecaoEditavel,
 } from "../lib/planos";
 import type { DocumentoPdf } from "../lib/leitorPdf";
@@ -200,6 +200,7 @@ export function PlanoDetalhe({ id }: { id: string }) {
 
             {rascunho && vista ? (
               <MontarEnvio key={vista.id} plano={p} versao={vista} pdf={pdf} aprovadasAnteriores={aprovadasAnteriores}
+                linksEnviados={versoes.filter((v) => v.status !== "rascunho" && v.link_url).map((v) => v.link_url!)}
                 onSujo={setSecoesSujas} onMudou={() => void dados.reload()} />
             ) : vista ? (
               <ResumoSecoes versao={vista} decisoes={decisoes} origem={origem} pdf={pdf} titulo={p.titulo} baixar={() => void baixar()} />
@@ -266,8 +267,8 @@ function mensagemPlano(p: Plano, v: VersaoPlano | undefined, link: string, pesso
 
 type Pdf = ReturnType<typeof usePdfPlano>;
 
-function MontarEnvio({ plano, versao, pdf, aprovadasAnteriores, onSujo, onMudou }: {
-  plano: Plano; versao: VersaoPlano; pdf: Pdf; aprovadasAnteriores: AprovacaoAnterior[];
+function MontarEnvio({ plano, versao, pdf, aprovadasAnteriores, linksEnviados, onSujo, onMudou }: {
+  plano: Plano; versao: VersaoPlano; pdf: Pdf; aprovadasAnteriores: AprovacaoAnterior[]; linksEnviados: string[];
   onSujo: (v: boolean) => void; onMudou: () => void;
 }) {
   const avisar = useAviso();
@@ -332,7 +333,7 @@ function MontarEnvio({ plano, versao, pdf, aprovadasAnteriores, onSujo, onMudou 
             )}
           </div>
         </div>
-        <MaterialLink versao={versao} tirando={tirando === "link"} onTirar={() => void tirar("link")} onMudou={onMudou} />
+        <MaterialLink versao={versao} linksEnviados={linksEnviados} tirando={tirando === "link"} onTirar={() => void tirar("link")} onMudou={onMudou} />
       </div>
 
       {(versao.pdf_path || versao.link_url) && versao.paginas && (
@@ -376,8 +377,8 @@ function MontarEnvio({ plano, versao, pdf, aprovadasAnteriores, onSujo, onMudou 
   );
 }
 
-function MaterialLink({ versao, tirando, onTirar, onMudou }: {
-  versao: VersaoPlano; tirando: boolean; onTirar: () => void; onMudou: () => void;
+function MaterialLink({ versao, linksEnviados, tirando, onTirar, onMudou }: {
+  versao: VersaoPlano; linksEnviados: string[]; tirando: boolean; onTirar: () => void; onMudou: () => void;
 }) {
   const avisar = useAviso();
   const [url, setUrl] = useState(versao.link_url ?? "");
@@ -387,7 +388,8 @@ function MaterialLink({ versao, tirando, onTirar, onMudou }: {
   const totalFixo = !!versao.pdf_path;
   const total = totalFixo ? versao.paginas ?? 0 : Number(slides);
   const mudou = url.trim().split("#")[0] !== (versao.link_url ?? "") || (!totalFixo && total !== versao.paginas);
-  const repetido = versao.numero > 1 && !!versao.link_url && !mudou;
+  // Mesmo endereço de uma versão já enviada (o banco recusa o envio).
+  const repetido = !!url.trim() && linksEnviados.some((l) => chaveLink(l) === chaveLink(url));
 
   async function salvar() {
     setErro(null);
@@ -418,7 +420,7 @@ function MaterialLink({ versao, tirando, onTirar, onMudou }: {
       </div>
       {repetido && (
         <p className="aviso aviso-atencao pequeno">
-          Esta versão ainda usa o link da versão anterior. Publique a versão corrigida em outro endereço (ex.: com -v{versao.numero} no fim)
+          Este é o endereço de uma versão já enviada. Publique a versão corrigida em outro endereço (ex.: com -v{versao.numero} no fim)
           e cole aqui: o link já aprovado precisa continuar mostrando o que foi aprovado.
         </p>
       )}
@@ -448,6 +450,12 @@ function EditorSecoes({ versao, paginas, doc, url, proporcao, aprovadasAnteriore
 }) {
   // Sem PDF (só link): as seções são marcadas pelo número do slide, com a apresentação ao lado.
   const [previa, setPrevia] = useState(1);
+  const [previaTexto, setPreviaTexto] = useState("1");
+  const irPara = (n: number) => {
+    const v = Math.min(paginas, Math.max(1, Math.round(n) || 1));
+    setPrevia(v);
+    setPreviaTexto(String(v));
+  };
   const [novoInicio, setNovoInicio] = useState("");
   const avisar = useAviso();
   const inicial = useMemo<SecaoTela[]>(() => versao.secoes.length
@@ -486,11 +494,12 @@ function EditorSecoes({ versao, paginas, doc, url, proporcao, aprovadasAnteriore
     setSecoes((l) => l.filter((_, j) => j !== i).map((s, j) => (j === i - 1 ? { ...s, mantem: null } : s)));
   }
   // Modo link: muda o slide em que a seção começa (entre a anterior e a próxima).
-  function mudarInicio(i: number, valor: number) {
+  function mudarInicio(i: number, valor: number, campo: HTMLInputElement) {
     const min = secoes[i - 1].inicio + 1;
     const max = i + 1 < secoes.length ? secoes[i + 1].inicio - 1 : paginas;
     if (!Number.isInteger(valor) || valor < min || valor > max) {
-      setErro(`A seção ${i + 1} precisa começar entre o slide ${min} e o ${max}.`);
+      campo.value = String(secoes[i].inicio);
+      setErro(`A seção ${i + 1} precisa começar entre o slide ${min} e o ${max}. Mantive o slide ${secoes[i].inicio}.`);
       return;
     }
     setErro(null);
@@ -535,8 +544,10 @@ function EditorSecoes({ versao, paginas, doc, url, proporcao, aprovadasAnteriore
           <div className="acoes-linha">
             <label className="previa-num">
               Ver o slide
-              <input type="number" min={1} max={paginas} value={previa}
-                onChange={(e) => setPrevia(Math.min(paginas, Math.max(1, Number(e.target.value) || 1)))} />
+              <input type="number" min={1} max={paginas} value={previaTexto}
+                onChange={(e) => setPreviaTexto(e.target.value)}
+                onBlur={() => irPara(Number(previaTexto))}
+                onKeyDown={(e) => { if (e.key === "Enter") irPara(Number(previaTexto)); }} />
               de {paginas}
             </label>
           </div>
@@ -561,7 +572,7 @@ function EditorSecoes({ versao, paginas, doc, url, proporcao, aprovadasAnteriore
                 <label className="secao-inicio">
                   começa no slide
                   <input type="number" min={secoes[i - 1].inicio + 1} max={paginas} defaultValue={s.inicio} key={s.inicio}
-                    onBlur={(e) => { if (Number(e.target.value) !== s.inicio) mudarInicio(i, Number(e.target.value)); }}
+                    onBlur={(e) => { if (Number(e.target.value) !== s.inicio) mudarInicio(i, Number(e.target.value), e.target); }}
                     onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
                   <span className="suave tab-num">até o {fim(i)}</span>
                 </label>
@@ -569,7 +580,7 @@ function EditorSecoes({ versao, paginas, doc, url, proporcao, aprovadasAnteriore
                 <span className="suave tab-num">{paginasDaSecao({ pagina_inicio: s.inicio, pagina_fim: fim(i) })}</span>
               )}
               {!doc && (
-                <Botao variante="fantasma" onClick={() => setPrevia(s.inicio)} title="Mostrar o primeiro slide desta seção na prévia">
+                <Botao variante="fantasma" onClick={() => irPara(s.inicio)} title="Mostrar o primeiro slide desta seção na prévia">
                   <LuEye /> Ver
                 </Botao>
               )}

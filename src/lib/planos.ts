@@ -171,6 +171,11 @@ export function validarLink(url: string): string | null {
   return null;
 }
 
+/** Forma de comparar links (a mesma do banco): ".../pca/" e ".../pca" são o mesmo endereço. */
+export const chaveLink = (url: string) =>
+  url.trim().split("#")[0].split("?")[0].toLowerCase()
+    .replace(/^https?:\/\/(www\.)?/, "").replace(/\/+/g, "/").replace(/(\/index\.html?)?\/*$/, "");
+
 export async function definirLinkPlano(versionId: string, url: string, slides: number): Promise<void> {
   const problema = validarLink(url);
   if (problema) throw new ErroApp(problema);

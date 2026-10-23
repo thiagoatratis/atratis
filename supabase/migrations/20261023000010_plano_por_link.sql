@@ -20,6 +20,21 @@ as $$
 $$;
 grant execute on function private.link_plano_valido(text) to authenticated, service_role;
 
+-- Forma usada para comparar links: sem https://, www., parâmetros (?...),
+-- barra final, index.html e barras repetidas, tudo em minúsculas. Assim
+-- ".../pca/" e ".../pca" contam como o mesmo endereço.
+create or replace function private.chave_link(p_url text)
+returns text
+language sql immutable set search_path = ''
+as $$
+  select regexp_replace(
+           regexp_replace(
+             regexp_replace(lower(split_part(split_part(btrim(p_url), '#', 1), '?', 1)), '^https?://(www\.)?', ''),
+             '/+', '/', 'g'),
+           '(/index\.html?)?/*$', '')
+$$;
+grant execute on function private.chave_link(text) to authenticated, service_role;
+
 alter table public.plan_versions add column link_url text;
 alter table public.plan_versions drop constraint plan_versions_pdf_chk;
 alter table public.plan_versions add constraint plan_versions_material_chk
@@ -159,7 +174,8 @@ begin
   -- O link aprovado precisa continuar mostrando o que foi aprovado: versão nova, endereço novo.
   if v_v.link_url is not null and exists (
        select 1 from public.plan_versions o
-        where o.plan_id = v_v.plan_id and o.id <> v_v.id and o.status <> 'rascunho' and o.link_url = v_v.link_url) then
+        where o.plan_id = v_v.plan_id and o.id <> v_v.id and o.status <> 'rascunho'
+          and private.chave_link(o.link_url) = private.chave_link(v_v.link_url)) then
     raise exception 'Este link já foi enviado numa versão anterior. Publique a versão nova em outro endereço (ex.: com -v2 no fim) e troque o link.'
       using errcode = 'P0001';
   end if;

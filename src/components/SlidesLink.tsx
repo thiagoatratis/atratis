@@ -28,8 +28,8 @@ export function usePertoDaTela<T extends Element>(margem = "300px 0px") {
  * sem acesso ao login de quem está vendo. Só carrega perto da tela, porque
  * cada janela abre a apresentação inteira.
  */
-export function JanelaLink({ url, pagina, titulo, sempre = false }: {
-  url: string; pagina: number; titulo: string; sempre?: boolean;
+export function JanelaLink({ url, pagina, titulo, sempre = false, onCarregada }: {
+  url: string; pagina: number; titulo: string; sempre?: boolean; onCarregada?: () => void;
 }) {
   const { ref, perto } = usePertoDaTela<HTMLDivElement>();
   const [carregada, setCarregada] = useState(false);
@@ -48,7 +48,7 @@ export function JanelaLink({ url, pagina, titulo, sempre = false }: {
             sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"
             allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
             allowFullScreen
-            onLoad={() => setCarregada(true)}
+            onLoad={() => { setCarregada(true); onCarregada?.(); }}
           />
         )}
         {!carregada && <span className="janela-link-espera">Abrindo a apresentação…</span>}

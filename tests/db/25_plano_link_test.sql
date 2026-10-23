@@ -108,6 +108,12 @@ do $$ begin
   raise exception 'FALHOU: enviou versão nova com o mesmo link' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  versão nova com o mesmo link não é enviada';
 end $$;
+do $$ begin
+  perform public.definir_link_plano((select id from l2), 'https://www.atratis.com.br/uteis/fortes//pca-recife/index.html?v=2', 6);
+  perform public.enviar_plano('60000000-0000-0000-0000-000000000001');
+  raise exception 'FALHOU: enviou o mesmo endereço disfarçado' using errcode = 'TF001';
+exception when raise_exception then raise notice 'ok  mesmo endereço com www, barra, index.html ou parâmetro não passa';
+end $$;
 select public.definir_link_plano((select id from l2), 'https://atratis.com.br/uteis/fortes/pca-recife-v2/', 6);
 select public.enviar_plano('60000000-0000-0000-0000-000000000001');
 select tests.ok((select string_agg(nome || '=' || status, ' ' order by ordem) from public.plan_sections where version_id = (select id from l2))

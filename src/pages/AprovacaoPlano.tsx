@@ -44,7 +44,9 @@ export function AprovacaoPlano({ id }: { id: string }) {
   const atual = dados.data?.versoes.at(-1);
   // Com link e PDF, abre no link (vídeos e carrosséis funcionando) e dá para trocar.
   const [escolha, setEscolha] = useState<"link" | "pdf" | null>(null);
-  const modo: "link" | "pdf" = escolha ?? (atual?.link_url ? "link" : "pdf");
+  // A escolha só vale se a versão atual tem aquele material.
+  const valida = (escolha === "pdf" && atual?.pdf_path) || (escolha === "link" && atual?.link_url) ? escolha : null;
+  const modo: "link" | "pdf" = valida ?? (atual?.link_url ? "link" : "pdf");
   const pdf = usePdfPlano(modo === "pdf" ? atual?.pdf_path : null);
   const [ampliar, setAmpliar] = useState<{ pagina: number; secao: SecaoPlano } | null>(null);
 
@@ -210,7 +212,8 @@ function SecaoCliente({ secao: s, doc, link, proporcao, decisoes, aberto, podeAp
   const paginas = Array.from({ length: s.pagina_fim - s.pagina_inicio + 1 }, (_, k) => s.pagina_inicio + k);
   const st = STATUS_SECAO[s.status];
   // Só decide depois que os slides aparecem (no PDF, quando ele termina de abrir).
-  const podeVer = !!link || !!doc;
+  const [linkAberto, setLinkAberto] = useState(false);
+  const podeVer = link ? linkAberto : !!doc;
   const mostrarBotoes = decide && podeVer && (s.status === "pendente" || mudando) && !pedindo;
 
   async function decidir(tipo: "aprovada" | "ajuste_solicitado") {
@@ -243,10 +246,11 @@ function SecaoCliente({ secao: s, doc, link, proporcao, decisoes, aberto, podeAp
 
       {verSlides && link ? (
         <>
-          <JanelaLink url={link} pagina={s.pagina_inicio} titulo={s.nome} />
-          {s.pagina_fim > s.pagina_inicio && (
-            <p className="suave pequeno">A apresentação abre no slide {s.pagina_inicio}. Use as setas dela para ver até o slide {s.pagina_fim}.</p>
-          )}
+          <JanelaLink url={link} pagina={s.pagina_inicio} titulo={s.nome} onCarregada={() => setLinkAberto(true)} />
+          <p className="suave pequeno">
+            {s.pagina_fim > s.pagina_inicio && `A apresentação abre no slide ${s.pagina_inicio}. Use as setas dela para ver até o slide ${s.pagina_fim}. `}
+            Se ela não aparecer, use "Abrir em tela cheia".
+          </p>
         </>
       ) : verSlides ? (
         doc ? (
