@@ -28,3 +28,13 @@ select tests.ok(not exists (select 1 from public.profiles where id = tests.id('c
 select tests.ok(exists (select 1 from public.audit_log where action = 'cliente.aprovador.removido'
                         and entity_id = tests.id('nortis')::text || ':' || tests.id('cli_nortis_leitor')::text),
   'a remoção do vínculo fica registrada no histórico');
+
+-- P.I.: exclusão de quem emitiu só limpa o autor; qualquer outra mudança é barrada.
+update public.insertion_orders set created_by = null where sequencia = 2;
+select tests.ok((select created_by is null from public.insertion_orders where sequencia = 2),
+  'excluir quem emitiu o P.I. não esbarra na proteção');
+do $$ begin
+  update public.insertion_orders set created_by = null, valor = 1 where sequencia = 3;
+  raise exception 'FALHOU: alterou valor junto com o autor';
+exception when insufficient_privilege then raise notice 'ok  P.I. continua protegido contra outras mudanças';
+end $$;
