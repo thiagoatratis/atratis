@@ -225,10 +225,33 @@ select tests.ok((select pdf_path is not null and paginas = 12 from public.plan_v
 insert into storage.objects (bucket_id, name)
 values ('planos', tests.id('nortis') || '/50000000-0000-0000-0000-000000000001/v2.pdf');
 select public.definir_pdf_plano((select id from v2), tests.id('nortis') || '/50000000-0000-0000-0000-000000000001/v2.pdf', 13);
+select tests.ok((select pagina_fim = 13 and mantem_aprovacao_de is null from public.plan_sections
+                 where version_id = (select id from v2) and nome = 'Tom de voz'),
+  'PDF maior: a última seção vai até o fim e, como mudou de tamanho, perde a aprovação mantida');
 do $$ begin
-  perform public.enviar_plano('50000000-0000-0000-0000-000000000001');
-  raise exception 'FALHOU: enviou com página sem seção' using errcode = 'TF001';
-exception when raise_exception then raise notice 'ok  PDF maior exige revisar as seções';
+  perform public.salvar_secoes_plano((select id from v2), jsonb_build_array(
+    jsonb_build_object('nome','Capa e sumário','pagina_inicio',1,'pagina_fim',2,'requer_aprovacao',false),
+    jsonb_build_object('nome','Objetivos','pagina_inicio',3,'pagina_fim',6,
+      'mantem_aprovacao_de',(select id from public.plan_sections where version_id = (select id from v1) and nome = 'Objetivos')),
+    jsonb_build_object('nome','Personas','pagina_inicio',7,'pagina_fim',10),
+    jsonb_build_object('nome','Tom de voz','pagina_inicio',11,'pagina_fim',13)));
+  raise exception 'FALHOU: manteve aprovação de seção que ganhou slide' using errcode = 'TF001';
+exception when raise_exception then raise notice 'ok  seção que muda de número de slides não mantém a aprovação';
+end $$;
+do $$ begin
+  perform public.salvar_secoes_plano((select id from v2), jsonb_build_array(
+    jsonb_build_object('nome','Capa e sumário','pagina_inicio',1,'pagina_fim',2,'requer_aprovacao',false),
+    jsonb_build_object('nome','Orçamento de mídia','pagina_inicio',3,'pagina_fim',5,
+      'mantem_aprovacao_de',(select id from public.plan_sections where version_id = (select id from v1) and nome = 'Objetivos')),
+    jsonb_build_object('nome','Personas','pagina_inicio',6,'pagina_fim',13)));
+  raise exception 'FALHOU: manteve aprovação em seção de outro assunto' using errcode = 'TF001';
+exception when raise_exception then raise notice 'ok  aprovação mantida só na seção de mesmo nome';
+end $$;
+do $$ begin
+  perform set_config('app.transicao', 'on', true);
+  update public.plans set status = 'aprovado' where id = '50000000-0000-0000-0000-000000000001';
+  raise exception 'FALHOU: equipe forjou status ligando a variável do fluxo' using errcode = 'TF001';
+exception when insufficient_privilege then raise notice 'ok  ligar app.transicao por conta própria não libera mudar status';
 end $$;
 do $$ begin
   perform public.salvar_secoes_plano((select id from v2), jsonb_build_array(
@@ -303,6 +326,75 @@ do $$ begin
   raise exception 'FALHOU: aproveitou aprovação de outro plano' using errcode = 'TF001';
 exception when raise_exception then raise notice 'ok  aprovação de um plano não vale para outro';
 end $$;
+reset role;
+
+-- ===================================================================
+\echo '— Aprovação ainda não final não passa para a versão nova'
+-- ===================================================================
+select tests.login('equipe1');
+set role authenticated;
+select public.salvar_secoes_plano(v.id, '[{"nome":"Abertura","pagina_inicio":1,"pagina_fim":1},{"nome":"Metas","pagina_inicio":2,"pagina_fim":3}]')
+  from public.plan_versions v where v.plan_id = '50000000-0000-0000-0000-000000000002';
+select public.enviar_plano('50000000-0000-0000-0000-000000000002');
+reset role;
+select tests.login('cli_nortis');
+set role authenticated;
+select public.decidir_secao_plano(s.id, 'aprovada') from public.plan_sections s
+  join public.plan_versions v on v.id = s.version_id
+ where v.plan_id = '50000000-0000-0000-0000-000000000002' and s.nome = 'Abertura';
+reset role;
+select tests.login('equipe1');
+set role authenticated;
+create temporary table p2v2 as select public.nova_versao_plano('50000000-0000-0000-0000-000000000002') as id;
+grant select on p2v2 to authenticated;
+select tests.ok((select mantem_aprovacao_de is null from public.plan_sections where version_id = (select id from p2v2) and nome = 'Abertura'),
+  'aprovação dada com seção ainda pendente volta para o cliente na versão nova');
+do $$ begin
+  perform public.salvar_secoes_plano((select id from p2v2), jsonb_build_array(
+    jsonb_build_object('nome','Abertura','pagina_inicio',1,'pagina_fim',1,
+      'mantem_aprovacao_de',(select s.id from public.plan_sections s join public.plan_versions v on v.id = s.version_id
+                              where v.plan_id = '50000000-0000-0000-0000-000000000002' and v.numero = 1 and s.nome = 'Abertura')),
+    jsonb_build_object('nome','Metas','pagina_inicio',2,'pagina_fim',3)));
+  raise exception 'FALHOU: manteve aprovação não final' using errcode = 'TF001';
+exception when raise_exception then raise notice 'ok  só mantém aprovação final';
+end $$;
+select public.enviar_plano('50000000-0000-0000-0000-000000000002');
+reset role;
+select tests.login('cli_nortis');
+set role authenticated;
+select public.decidir_secao_plano(s.id, 'ajuste_solicitado', 'Trocar a meta', array[null, 3]::integer[])
+  from public.plan_sections s where s.version_id = (select id from p2v2) and s.nome = 'Metas';
+select tests.ok((select slides = array[3] from public.plan_section_decisions where comentario = 'Trocar a meta'),
+  'slide vazio na citação é ignorado');
+reset role;
+
+select tests.login('equipe1');
+set role authenticated;
+insert into public.plans (id, client_id, titulo)
+values ('50000000-0000-0000-0000-000000000003', tests.id('nortis'), 'Plano interno que nunca foi enviado');
+select public.cancelar_plano('50000000-0000-0000-0000-000000000003', 'Interno: segurar');
+reset role;
+select tests.login('cli_nortis');
+set role authenticated;
+select tests.ok(not exists (select 1 from public.plans where id = '50000000-0000-0000-0000-000000000003'),
+  'plano cancelado antes de ser enviado não aparece para o cliente');
+reset role;
+
+-- A mesma regra vale para criativos e orçamentos (correção 008).
+select tests.login('equipe1');
+set role authenticated;
+insert into public.creative_requests (id, client_id, titulo)
+values ('50000000-0000-0000-0000-0000000000c1', tests.id('nortis'), 'Peças que nunca saíram');
+select public.cancelar_solicitacao('50000000-0000-0000-0000-0000000000c1', 'Interno: segurar');
+insert into public.budgets (id, client_id, mes_referencia) values ('50000000-0000-0000-0000-0000000000b1', tests.id('nortis'), '2027-03-01');
+select public.cancelar_orcamento('50000000-0000-0000-0000-0000000000b1', 'Interno: segurar');
+reset role;
+select tests.login('cli_nortis');
+set role authenticated;
+select tests.ok(not exists (select 1 from public.creative_requests where id = '50000000-0000-0000-0000-0000000000c1'),
+  'solicitação de criativos cancelada antes de ser enviada não aparece para o cliente');
+select tests.ok(not exists (select 1 from public.budgets where id = '50000000-0000-0000-0000-0000000000b1'),
+  'orçamento cancelado antes de ser enviado não aparece para o cliente');
 reset role;
 
 -- ===================================================================

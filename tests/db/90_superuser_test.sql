@@ -39,14 +39,16 @@ do $$ begin
 exception when insufficient_privilege then raise notice 'ok  P.I. continua protegido contra outras mudanças';
 end $$;
 
--- Plano: exclusão de quem criou a versão enviada só limpa o autor.
-update public.plan_versions set created_by = null where numero = 1 and plan_id = '50000000-0000-0000-0000-000000000001';
-select tests.ok((select created_by is null from public.plan_versions where numero = 1 and plan_id = '50000000-0000-0000-0000-000000000001'),
-  'excluir quem criou a versão do plano não esbarra na proteção');
+-- Versões enviadas: apagar o autor direto (sem excluir o usuário) é barrado.
 do $$ begin
-  update public.plan_versions set created_by = null, paginas = 1 where numero = 2 and plan_id = '50000000-0000-0000-0000-000000000001';
-  raise exception 'FALHOU: alterou páginas junto com o autor' using errcode = 'TF001';
-exception when insufficient_privilege then raise notice 'ok  versão do plano continua protegida contra outras mudanças';
+  update public.plan_versions set created_by = null where numero = 1 and plan_id = '50000000-0000-0000-0000-000000000001';
+  raise exception 'FALHOU: apagou o autor da versão do plano direto' using errcode = 'TF001';
+exception when insufficient_privilege then raise notice 'ok  autor de versão de plano enviada não é apagado direto';
+end $$;
+do $$ begin
+  update public.budget_versions set created_by = null where status <> 'rascunho';
+  raise exception 'FALHOU: apagou o autor da versão do orçamento direto' using errcode = 'TF001';
+exception when insufficient_privilege then raise notice 'ok  autor de versão de orçamento enviada não é apagado direto';
 end $$;
 
 -- Membro da equipe que sai da agência: excluir no Auth não pode esbarrar
@@ -54,3 +56,4 @@ end $$;
 delete from auth.users where id = tests.id('equipe1');
 select tests.ok(not exists (select 1 from public.profiles where id = tests.id('equipe1')),
   'membro da equipe que criou orçamentos, P.I. e planos pode ser excluído');
+select tests.ok((select bool_and(created_by is null) from public.plan_versions), 'e o autor das versões do plano fica vazio');
