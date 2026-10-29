@@ -147,7 +147,7 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
         </div>
       )}
 
-      <div className="layout-detalhe">
+      <div className="layout-detalhe layout-orcamento">
         <div className="pilha-larga">
         <section aria-labelledby="titulo-valores">
           <div className="secao-topo">

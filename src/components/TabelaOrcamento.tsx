@@ -51,7 +51,7 @@ export function TabelaOrcamento({ linhas, onEditar, onExcluir }: {
                 )}
                 <td className="num tab-num col-opcional">{formatarMoeda(l.verba)}</td>
                 <td className="num tab-num col-opcional">
-                  {l.aliquota > 0 ? <>{formatarMoeda(l.imposto)} <small className="suave">({formatarAliquota(l.aliquota)})</small></> : <span className="suave">—</span>}
+                  {l.aliquota > 0 ? <>{formatarMoeda(l.imposto)}<small className="suave aliquota">{formatarAliquota(l.aliquota)}</small></> : <span className="suave">—</span>}
                 </td>
                 <td className="num tab-num"><strong>{formatarMoeda(l.valor)}</strong></td>
                 {acoes && (
