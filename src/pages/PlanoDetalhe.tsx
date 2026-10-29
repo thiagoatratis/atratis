@@ -125,8 +125,11 @@ export function PlanoDetalhe({ id }: { id: string }) {
   }
 
   const ajustes = atual?.status === "concluida" ? atual.secoes.filter((s) => s.status === "ajuste_solicitado") : [];
-  // Seções que a aprovação em reunião aprova (no rascunho, ele é enviado junto).
-  const semDecisao = atual?.secoes.filter((s) => s.status === "pendente" || s.status === "ajuste_solicitado") ?? [];
+  // Seções que a aprovação em reunião aprova. No rascunho (que é enviado junto),
+  // são as que pedem aprovação e não mantêm uma aprovação anterior.
+  const semDecisao = atual?.secoes.filter((s) => atual.status === "rascunho"
+    ? s.requer_aprovacao && !s.mantem_aprovacao_de
+    : s.status === "pendente" || s.status === "ajuste_solicitado") ?? [];
   const podeAprovarEmReuniao = editavel && p.status !== "aprovado" && semDecisao.length > 0
     && (atual?.status !== "rascunho" || !motivoNaoEnvia);
 

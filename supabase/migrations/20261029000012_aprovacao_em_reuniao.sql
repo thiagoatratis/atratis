@@ -90,6 +90,9 @@ begin
   if v_b.status = 'cancelado' then
     raise exception 'Orçamento cancelado não pode ser aprovado.' using errcode = 'P0001';
   end if;
+  if not exists (select 1 from public.clients c where c.id = v_b.client_id and c.ativo) then
+    raise exception 'O cliente está inativo.' using errcode = 'P0001';
+  end if;
   perform private.validar_reuniao(p_reuniao_em, p_aprovado_por, p_observacao);
 
   select * into v_v from public.budget_versions where id = private.versao_atual_orcamento(p_budget);
@@ -143,6 +146,9 @@ begin
   end if;
   if v_p.status = 'aprovado' then
     raise exception 'Este plano já está aprovado.' using errcode = 'P0001';
+  end if;
+  if not exists (select 1 from public.clients c where c.id = v_p.client_id and c.ativo) then
+    raise exception 'O cliente está inativo.' using errcode = 'P0001';
   end if;
   perform private.validar_reuniao(p_reuniao_em, p_aprovado_por, p_observacao);
 
@@ -200,6 +206,9 @@ begin
   if v_r.status = 'cancelado' then
     raise exception 'Solicitação cancelada não pode ser aprovada.' using errcode = 'P0001';
   end if;
+  if not exists (select 1 from public.clients c where c.id = v_r.client_id and c.ativo) then
+    raise exception 'O cliente está inativo.' using errcode = 'P0001';
+  end if;
   perform private.validar_reuniao(p_reuniao_em, p_aprovado_por, p_observacao);
 
   select * into v_eu from public.profiles where id = auth.uid();
@@ -240,6 +249,42 @@ grant execute on function public.aprovar_orcamento_em_reuniao(uuid, timestamptz,
   public.aprovar_solicitacao_em_reuniao(uuid, timestamptz, text, text) to authenticated;
 
 -- ---------------------------------------------------------------------
+-- Cliente aprova o total que viu. Como a equipe agora muda valores com o
+-- orçamento já com o cliente, a aprovação pelo portal confere que o total
+-- na tela dele ainda é o atual (a versão antiga, de 3 parâmetros, continua
+-- existindo para não quebrar telas abertas antes da atualização).
+-- ---------------------------------------------------------------------
+
+create or replace function public.decidir_orcamento(p_budget uuid, p_decisao text, p_comentario text, p_total_visto numeric)
+returns public.orcamento_status
+language plpgsql security definer set search_path = ''
+as $$
+declare
+  v_b public.budgets%rowtype;
+  v_versao uuid;
+  v_total numeric(14, 2);
+begin
+  -- Mesma ordem de travas de decidir_orcamento e enviar_orcamento: orçamento, depois versão.
+  select * into v_b from public.budgets where id = p_budget for update;
+  if not found or not private.can_approve(v_b.client_id) then
+    raise exception 'Você não tem permissão para aprovar por esta empresa.' using errcode = '42501';
+  end if;
+  if p_decisao = 'aprovado' then
+    v_versao := private.versao_atual_orcamento(p_budget);
+    perform 1 from public.budget_versions where id = v_versao for update;
+    select coalesce(sum(valor), 0) into v_total from public.budget_lines where version_id = v_versao;
+    if p_total_visto is null or v_total <> round(p_total_visto, 2) then
+      raise exception 'Os valores deste orçamento acabaram de mudar. Atualizamos a página: confira o novo total antes de aprovar.'
+        using errcode = 'P0001';
+    end if;
+  end if;
+  return public.decidir_orcamento(p_budget, p_decisao, p_comentario);
+end;
+$$;
+revoke all on function public.decidir_orcamento(uuid, text, text, numeric) from public, anon;
+grant execute on function public.decidir_orcamento(uuid, text, text, numeric) to authenticated;
+
+-- ---------------------------------------------------------------------
 -- Registro dos P.I.s enviados por e-mail pelo sistema
 -- (gravado só pela função de servidor "enviar-pis", com a chave de serviço)
 -- ---------------------------------------------------------------------
@@ -257,6 +302,8 @@ create table public.pi_envios (
   created_at       timestamptz not null default now()
 );
 create index pi_envios_budget_idx on public.pi_envios (budget_id, created_at desc);
+-- Limite de envios por pessoa por hora (conferido pela função de servidor).
+create index pi_envios_por_idx on public.pi_envios (enviado_por, created_at desc);
 create trigger pi_envios_immutable before update or delete on public.pi_envios
   for each row execute function private.registro_imutavel();
 create trigger pi_envios_audit after insert on public.pi_envios

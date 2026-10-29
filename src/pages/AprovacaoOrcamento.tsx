@@ -73,7 +73,7 @@ export function AprovacaoOrcamento({ id }: { id: string }) {
     setOcupado(true);
     setErro(null);
     try {
-      await decidirOrcamento(o.id, tipo, tipo === "alteracoes_solicitadas" ? texto : undefined);
+      await decidirOrcamento(o.id, tipo, tipo === "alteracoes_solicitadas" ? texto : undefined, t.valor);
       setPedindo(false);
       setConfirmar(false);
       setTexto("");
@@ -81,8 +81,12 @@ export function AprovacaoOrcamento({ id }: { id: string }) {
       await dados.reload();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (tipo === "aprovado") avisar(msg, "erro");
-      else setErro(msg);
+      if (tipo === "aprovado") {
+        // Valores mudaram enquanto a página estava aberta: mostra os novos antes de aprovar.
+        setConfirmar(false);
+        void dados.reload();
+        avisar(msg, "erro");
+      } else setErro(msg);
     } finally {
       setOcupado(false);
     }

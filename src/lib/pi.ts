@@ -120,8 +120,9 @@ export function emailPadrao(pis: PedidoInsercao[], linkPortal: string): { assunt
 // ---------------- E-mail ----------------
 
 /** Envia os P.I.s pelo Gmail da Atratis (função de servidor "enviar-pis"), com os PDFs anexos. */
-export async function enviarPisPeloSistema(dados: { pis: string[]; para: string[]; assunto: string; corpo: string }): Promise<void> {
-  const { error } = await supabase.functions.invoke("enviar-pis", { body: dados });
+export async function enviarPisPeloSistema(dados: { pis: string[]; para: string[]; assunto: string; corpo: string })
+  : Promise<{ registrado: boolean }> {
+  const { data, error } = await supabase.functions.invoke("enviar-pis", { body: dados });
   if (error) {
     if (error instanceof FunctionsHttpError) {
       const resp = await error.context.json().catch(() => null);
@@ -129,6 +130,7 @@ export async function enviarPisPeloSistema(dados: { pis: string[]; para: string[
     }
     throw new ErroApp("Não foi possível falar com a função de envio. Confira se ela foi publicada no Supabase.");
   }
+  return { registrado: (data as { registrado?: boolean } | null)?.registrado !== false };
 }
 
 export async function listarEnviosPI(budgetId: string): Promise<EnvioPI[]> {

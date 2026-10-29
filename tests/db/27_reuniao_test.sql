@@ -179,3 +179,54 @@ do $$ begin
 exception when insufficient_privilege then raise notice 'ok  registro de envio só pela função de servidor';
 end $$;
 reset role;
+
+-- ===================================================================
+\echo '— Cliente aprova o total que viu'
+-- ===================================================================
+select tests.login('equipe1');
+set role authenticated;
+insert into public.budgets (id, client_id, mes_referencia) values ('80000000-0000-0000-0000-000000000003', tests.id('nortis'), '2027-04-01');
+insert into public.budget_lines (version_id, plataforma, valor)
+select v.id, 'Meta Ads', 1100 from public.budget_versions v where v.budget_id = '80000000-0000-0000-0000-000000000003';
+select public.enviar_orcamento('80000000-0000-0000-0000-000000000003');
+-- Equipe sobe o valor com o orçamento já com o cliente.
+update public.budget_lines set valor = 1600
+ where version_id = (select id from public.budget_versions where budget_id = '80000000-0000-0000-0000-000000000003');
+reset role;
+
+select tests.login('cli_nortis');
+set role authenticated;
+do $$ begin
+  perform public.decidir_orcamento('80000000-0000-0000-0000-000000000003', 'aprovado', null, 1100);
+  raise exception 'FALHOU: aprovou total desatualizado' using errcode = 'TF001';
+exception when raise_exception then raise notice 'ok  aprovação com total desatualizado é recusada';
+end $$;
+select tests.ok((select status = 'aguardando_aprovacao' from public.budgets where id = '80000000-0000-0000-0000-000000000003'),
+  'orçamento continua aguardando depois da recusa');
+select tests.ok(public.decidir_orcamento('80000000-0000-0000-0000-000000000003', 'aprovado', null, 1600) = 'aprovado',
+  'com o total atual, aprova');
+select tests.ok((select total = 1600 from public.budget_approvals where budget_id = '80000000-0000-0000-0000-000000000003'),
+  'aprovação guarda o total que o cliente viu');
+reset role;
+
+select tests.login('equipe1');
+set role authenticated;
+insert into public.budgets (id, client_id, mes_referencia) values ('80000000-0000-0000-0000-000000000004', tests.id('nortis'), '2027-05-01');
+insert into public.budget_lines (version_id, plataforma, valor)
+select v.id, 'Meta Ads', 300 from public.budget_versions v where v.budget_id = '80000000-0000-0000-0000-000000000004';
+select public.enviar_orcamento('80000000-0000-0000-0000-000000000004');
+reset role;
+select tests.login('cli_dasart');
+set role authenticated;
+do $$ begin
+  perform public.decidir_orcamento('80000000-0000-0000-0000-000000000004', 'aprovado', null, 300);
+  raise exception 'FALHOU: outra empresa aprovou' using errcode = 'TF001';
+exception when insufficient_privilege then raise notice 'ok  outra empresa não aprova nem descobre o total';
+end $$;
+reset role;
+select tests.login('cli_nortis');
+set role authenticated;
+select tests.ok(public.decidir_orcamento('80000000-0000-0000-0000-000000000004', 'alteracoes_solicitadas', 'Rever valor', 0)
+                = 'alteracoes_solicitadas',
+  'pedido de alteração não depende do total');
+reset role;

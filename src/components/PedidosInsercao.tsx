@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LuBan, LuDownload, LuFileText, LuMail, LuPlus, LuSend, LuX } from "react-icons/lu";
 import { useAsync } from "../lib/useAsync";
 import { listarVinculos, obterAgencia } from "../lib/api";
@@ -379,11 +379,14 @@ type ModoEnvio = "sistema" | "manual";
  * e manda pelo próprio e-mail. Destinatários: sugere os aprovadores do
  * cliente e o e-mail de contato do cadastro; a equipe tira e põe na hora.
  */
-function EmailPIs({ pis, orcamento, cliente, onFechar, onEnviado }: {
+function EmailPIs({ pis: oferecidos, orcamento, cliente, onFechar, onEnviado }: {
   pis: PedidoInsercao[]; orcamento: Orcamento; cliente: Cliente | undefined; onFechar: () => void; onEnviado: () => void;
 }) {
   const avisar = useAviso();
   const link = `${window.location.origin}/orcamentos/${orcamento.id}`;
+  // Com vários P.I.s, a equipe escolhe quais vão (ex.: só os por plataforma).
+  const [marcados, setMarcados] = useState<string[]>(() => oferecidos.map((p) => p.id));
+  const pis = useMemo(() => oferecidos.filter((p) => marcados.includes(p.id)), [oferecidos, marcados]);
   const padrao = useMemo(() => emailPadrao(pis, link), [pis, link]);
   const vinculos = useAsync(() => listarVinculos(orcamento.client_id), [orcamento.client_id]);
   const [modo, setModo] = useState<ModoEnvio>("sistema");
@@ -395,6 +398,15 @@ function EmailPIs({ pis, orcamento, cliente, onFechar, onEnviado }: {
   const [baixando, setBaixando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // Texto padrão acompanha os P.I.s escolhidos (só quando a escolha muda).
+  const escolha = marcados.join(",");
+  const primeiraEscolha = useRef(escolha);
+  useEffect(() => {
+    if (escolha === primeiraEscolha.current) return;
+    primeiraEscolha.current = escolha;
+    setAssunto(padrao.assunto);
+    setCorpo(padrao.corpo);
+  }, [escolha, padrao]);
 
   // Sugestões: aprovadores ativos do cliente + e-mail de contato do cadastro.
   const sugestoes = useMemo(() => {
@@ -443,6 +455,8 @@ function EmailPIs({ pis, orcamento, cliente, onFechar, onEnviado }: {
     setErro(null);
     if (novo.trim() && !adicionar()) return;
     const destino = [...new Set([...lista, ...lerEmails(novo).validos])];
+    if (!pis.length) return setErro("Marque pelo menos um P.I.");
+    if (pis.length > 20) return setErro("Envie no máximo 20 P.I.s por e-mail.");
     if (!destino.length) return setErro("Escolha pelo menos um destinatário.");
     if (destino.length > 10) return setErro("Use no máximo 10 destinatários.");
     if (!assunto.trim() || !corpo.trim()) return setErro("Preencha o assunto e a mensagem.");
@@ -451,8 +465,10 @@ function EmailPIs({ pis, orcamento, cliente, onFechar, onEnviado }: {
     try {
       // O e-mail anexa o PDF guardado; se algum ainda não foi gerado, gera agora.
       for (const p of pis) if (!p.pdf_path) await salvarPdf(p);
-      await enviarPisPeloSistema({ pis: pis.map((p) => p.id), para: destino, assunto: assunto.trim(), corpo });
-      avisar(`E-mail enviado para ${destino.join(", ")}.`);
+      const { registrado } = await enviarPisPeloSistema({ pis: pis.map((p) => p.id), para: destino, assunto: assunto.trim(), corpo });
+      avisar(registrado
+        ? `E-mail enviado para ${destino.join(", ")}.`
+        : `E-mail enviado para ${destino.join(", ")}, mas o registro do envio falhou. Não envie de novo.`, registrado ? undefined : "erro");
       onEnviado();
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
@@ -464,7 +480,7 @@ function EmailPIs({ pis, orcamento, cliente, onFechar, onEnviado }: {
   const mailto = `mailto:${lista.map(encodeURIComponent).join(",")}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
 
   return (
-    <Modal aberto titulo={pis.length === 1 ? `E-mail do P.I. ${pis[0].numero}` : `E-mail dos P.I.s ${pis.map((p) => p.numero).join(", ")}`}
+    <Modal aberto titulo={oferecidos.length === 1 ? `E-mail do P.I. ${oferecidos[0].numero}` : "E-mail dos P.I.s"}
       onFechar={onFechar} largura={660}
       rodape={modo === "sistema" ? <>
         <Botao variante="fantasma" onClick={onFechar}>Fechar</Botao>
@@ -494,6 +510,21 @@ function EmailPIs({ pis, orcamento, cliente, onFechar, onEnviado }: {
             {lista.length > 0 && <> Ou <a href={mailto}>abra no seu programa de e-mail</a> (anexe {pis.length === 1 ? "o PDF" : "os PDFs"} antes de enviar).</>}</p>
         )}
         {erro && <div className="aviso aviso-erro" role="alert"><p>{erro}</p></div>}
+
+        {oferecidos.length > 1 && (
+          <fieldset className="grupo">
+            <legend>P.I.s</legend>
+            <div className="opcoes-radio">
+              {oferecidos.map((p) => (
+                <label key={p.id} className="check">
+                  <input type="checkbox" checked={marcados.includes(p.id)}
+                    onChange={(e) => setMarcados(e.target.checked ? [...marcados, p.id] : marcados.filter((x) => x !== p.id))} />
+                  <span>P.I. {p.numero}: {p.veiculacao}, {formatarMoeda(p.valor)} <small className="suave">(emitido em {formatarData(p.data_emissao)})</small></span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
 
         <fieldset className="grupo">
           <legend>Para</legend>

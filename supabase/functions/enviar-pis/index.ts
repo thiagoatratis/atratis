@@ -30,13 +30,11 @@ function chave(novas: string, antiga: string): string {
   throw new Error(`Variável ${novas} (ou ${antiga}) não encontrada.`);
 }
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const ANON_KEY = chave("SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_ANON_KEY");
-const SERVICE_KEY = chave("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY");
-
 const EMAIL_RE = /^[^@\s,;<>"]+@[^@\s,;<>"]+\.[^@\s,;<>"]+$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_DESTINATARIOS = 10;
+const MAX_ENVIOS_POR_HORA = 30;            // por pessoa da equipe
+const MAX_ANEXOS_BYTES = 20 * 1024 * 1024; // o Gmail recusa acima de 25 MB (com a codificação)
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -74,6 +72,9 @@ function nomeArquivo(p: PI): string {
 }
 
 async function enviar(req: Request) {
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+  const ANON_KEY = chave("SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_ANON_KEY");
+  const SERVICE_KEY = chave("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY");
   const gmailUser = Deno.env.get("GMAIL_USER");
   const gmailSenha = Deno.env.get("GMAIL_APP_PASSWORD");
   if (!gmailUser || !gmailSenha) {
@@ -98,7 +99,9 @@ async function enviar(req: Request) {
 
   // Pedido.
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  const ids = Array.isArray(body.pis) ? body.pis.filter((x): x is string => typeof x === "string" && UUID_RE.test(x)) : [];
+  const ids = Array.isArray(body.pis)
+    ? [...new Set(body.pis.filter((x): x is string => typeof x === "string" && UUID_RE.test(x)).map((x) => x.toLowerCase()))]
+    : [];
   if (!ids.length || ids.length > 20) throw new HttpError(400, "Escolha de 1 a 20 P.I.s.");
   const para = Array.isArray(body.para)
     ? [...new Set(body.para.filter((x): x is string => typeof x === "string").map((x) => x.trim().toLowerCase()).filter(Boolean))]
@@ -110,6 +113,14 @@ async function enviar(req: Request) {
   const assunto = typeof body.assunto === "string" ? body.assunto.replace(/[\r\n]+/g, " ").trim().slice(0, 200) : "";
   const corpo = typeof body.corpo === "string" ? body.corpo.slice(0, 10000) : "";
   if (!assunto || !corpo.trim()) throw new HttpError(400, "Preencha o assunto e a mensagem.");
+
+  // Limite por pessoa: protege a conta Gmail da Atratis de uso indevido.
+  const umaHora = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count } = await svc.from("pi_envios").select("id", { count: "exact", head: true })
+    .eq("enviado_por", u.user.id).gte("created_at", umaHora);
+  if ((count ?? 0) >= MAX_ENVIOS_POR_HORA) {
+    throw new HttpError(429, "Muitos envios na última hora. Espere um pouco ou use \"Enviar pelo meu e-mail\".");
+  }
 
   // P.I.s: emitidos, com PDF, do mesmo orçamento, e quem chama tem acesso ao cliente
   // (consulta com o token do usuário: a RLS só devolve o que ele pode ver).
@@ -131,10 +142,14 @@ async function enviar(req: Request) {
   // Anexos.
   pis.sort((a, b) => a.numero.localeCompare(b.numero));
   const anexos = [];
+  let bytes = 0;
   for (const p of pis) {
     const { data: arq, error } = await svc.storage.from("pis").download(p.pdf_path!);
     if (error || !arq) throw new HttpError(500, `Não foi possível ler o PDF do P.I. ${p.numero}.`);
-    anexos.push({ filename: nomeArquivo(p), content: new Uint8Array(await arq.arrayBuffer()), contentType: "application/pdf" });
+    const conteudo = new Uint8Array(await arq.arrayBuffer());
+    bytes += conteudo.byteLength;
+    if (bytes > MAX_ANEXOS_BYTES) throw new HttpError(400, "Os PDFs passam do limite de anexos do Gmail. Envie menos P.I.s por vez.");
+    anexos.push({ filename: nomeArquivo(p), content: conteudo, contentType: "application/pdf" });
   }
 
   // Envio pelo Gmail (porta 465; o Supabase bloqueia 25 e 587).
@@ -159,12 +174,19 @@ async function enviar(req: Request) {
     throw new HttpError(502, "O Gmail recusou o envio. Confira a senha de app nas configurações ou use \"Enviar pelo meu e-mail\".");
   }
 
-  const { error: er } = await svc.from("pi_envios").insert({
+  // Registro do envio. O e-mail já saiu: se o registro falhar, tenta de novo
+  // e avisa a tela, para ninguém achar que não foi enviado e mandar outra vez.
+  const registro = {
     budget_id: pis[0].budget_id, client_id: pis[0].client_id, pis: pis.map((p) => p.id), numeros: pis.map((p) => p.numero),
     para, assunto, enviado_por: u.user.id, enviado_por_nome: perfil.nome || perfil.email,
-  });
-  if (er) console.error("E-mail enviado, mas o registro falhou:", er.message);
-  return { enviado: true, para, numeros: pis.map((p) => p.numero) };
+  };
+  let registrado = false;
+  for (let tentativa = 0; tentativa < 3 && !registrado; tentativa++) {
+    const { error: er } = await svc.from("pi_envios").insert(registro);
+    if (er) console.error(`E-mail enviado, mas o registro falhou (tentativa ${tentativa + 1}):`, er.message);
+    else registrado = true;
+  }
+  return { enviado: true, registrado, para, numeros: pis.map((p) => p.numero) };
 }
 
 Deno.serve(async (req) => {

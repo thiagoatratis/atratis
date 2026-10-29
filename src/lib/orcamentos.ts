@@ -133,9 +133,14 @@ export async function registrarVisualizacaoOrcamento(id: string): Promise<void> 
   await supabase.rpc("registrar_visualizacao_orcamento", { p_budget: id });
 }
 
-export async function decidirOrcamento(id: string, decisao: "aprovado" | "alteracoes_solicitadas", comentario?: string) {
+/**
+ * Decisão do cliente. `totalVisto` é o total que ele tinha na tela: se a
+ * equipe mudou os valores nesse meio-tempo, o banco recusa a aprovação.
+ */
+export async function decidirOrcamento(id: string, decisao: "aprovado" | "alteracoes_solicitadas", comentario: string | undefined,
+  totalVisto: number) {
   const { data, error } = await supabase.rpc("decidir_orcamento", {
-    p_budget: id, p_decisao: decisao, p_comentario: comentario ?? null,
+    p_budget: id, p_decisao: decisao, p_comentario: comentario ?? null, p_total_visto: totalVisto,
   });
   erro(error);
   return data as StatusOrcamento;

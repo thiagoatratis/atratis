@@ -57,7 +57,9 @@ begin
   if tg_op = 'UPDATE' and new.version_id <> old.version_id then
     raise exception 'Não é possível mover a linha para outra versão.' using errcode = '42501';
   end if;
-  select * into v_v from public.budget_versions where id = coalesce(new.version_id, old.version_id);
+  -- Trava a versão: mudanças de linha ficam em fila com a decisão do cliente
+  -- (decidir_orcamento trava a mesma linha) e com outras exclusões.
+  select * into v_v from public.budget_versions where id = coalesce(new.version_id, old.version_id) for update;
   select * into v_b from public.budgets where id = v_v.budget_id;
   if v_b.status = 'cancelado' then
     raise exception 'Orçamento cancelado não pode ser alterado.' using errcode = '42501';
