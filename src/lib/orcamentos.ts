@@ -87,7 +87,52 @@ export async function listarVersoes(budgetId: string): Promise<VersaoOrcamento[]
   return ordenarVersoes((data ?? []) as VersaoOrcamento[]);
 }
 
-export interface CamposLinha { plataforma: string; descricao: string | null; valor: number }
+export interface CamposLinha { projeto: string | null; plataforma: string; descricao: string | null; valor: number }
+
+/** Linha na ordem de exibição, com o número do canal e quantas linhas cada célula agrupada ocupa. */
+export interface LinhaExibida {
+  linha: LinhaOrcamento;
+  numero: number;
+  /** Nas linhas que abrem um projeto: quantas linhas ele tem (rowspan). */
+  projetoSpan: number;
+  /** Nas linhas que abrem um objetivo dentro do projeto: quantas linhas seguidas têm o mesmo objetivo. */
+  objetivoSpan: number;
+}
+
+const chaveTexto = (t: string | null) => (t ?? "").trim().toLocaleLowerCase("pt-BR");
+
+/**
+ * Agrupa as linhas por projeto (na ordem em que cada projeto aparece pela
+ * primeira vez) e junta objetivos iguais em sequência, como na planilha
+ * "Projetos × Objetivo × Mídias". Linhas sem projeto ficam no fim.
+ */
+export function agruparPorProjeto(linhas: LinhaOrcamento[]): LinhaExibida[] {
+  const ordenadas = [...linhas].sort((a, b) => a.ordem - b.ordem || a.created_at.localeCompare(b.created_at));
+  const grupos = new Map<string, LinhaOrcamento[]>();
+  for (const l of ordenadas) {
+    const k = chaveTexto(l.projeto);
+    grupos.set(k, [...(grupos.get(k) ?? []), l]);
+  }
+  const semProjeto = grupos.get("");
+  grupos.delete("");
+  if (semProjeto) grupos.set("", semProjeto);
+  const saida: LinhaExibida[] = [];
+  for (const grupo of grupos.values()) {
+    grupo.forEach((l, i) => {
+      let objetivoSpan = 0;
+      if (i === 0 || chaveTexto(grupo[i - 1].descricao) !== chaveTexto(l.descricao)) {
+        objetivoSpan = 1;
+        while (i + objetivoSpan < grupo.length && chaveTexto(grupo[i + objetivoSpan].descricao) === chaveTexto(l.descricao)) objetivoSpan++;
+      }
+      saida.push({ linha: l, numero: saida.length + 1, projetoSpan: i === 0 ? grupo.length : 0, objetivoSpan });
+    });
+  }
+  return saida;
+}
+
+/** Projetos já usados no orçamento (para sugerir no formulário). */
+export const projetosDoOrcamento = (linhas: LinhaOrcamento[]) =>
+  [...new Map(linhas.filter((l) => l.projeto).map((l) => [chaveTexto(l.projeto), l.projeto!])).values()];
 
 export async function adicionarLinha(versionId: string, campos: CamposLinha, ordem: number): Promise<void> {
   const { error } = await supabase.from("budget_lines").insert({ version_id: versionId, ...campos, ordem });

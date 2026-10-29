@@ -230,7 +230,10 @@ export interface LinhaOrcamento {
   id: string;
   version_id: string;
   plataforma: string;
+  /** Na tela aparece como "Objetivo". */
   descricao: string | null;
+  /** Agrupa as linhas na tabela (ex.: Institucional, Revista). */
+  projeto: string | null;
   valor: number;
   aliquota: number;
   imposto: number;
@@ -449,6 +452,8 @@ export interface AlteracaoOrcamento {
   descricao: string | null;
   plataforma_antes: string | null;
   descricao_antes: string | null;
+  projeto: string | null;
+  projeto_antes: string | null;
   valor_antes: number | null;
   valor_depois: number | null;
   status_orcamento: StatusOrcamento;

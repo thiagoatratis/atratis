@@ -5,7 +5,7 @@ import { listarClientes, listarUsuarios } from "../lib/api";
 import { listarCampanhas } from "../lib/criativos";
 import {
   adicionarLinha, aprovarOrcamentoEmReuniao, atualizarLinha, cancelarOrcamento, enviarOrcamento, excluirLinha, listarAlteracoesOrcamento, listarDecisoesOrcamento,
-  listarVersoes, novaVersaoOrcamento, obterObservacoesOrcamento, obterOrcamento, salvarObservacoesOrcamento,
+  listarVersoes, novaVersaoOrcamento, obterObservacoesOrcamento, obterOrcamento, projetosDoOrcamento, salvarObservacoesOrcamento,
   tituloOrcamento, totais, type CamposLinha,
 } from "../lib/orcamentos";
 import {
@@ -213,7 +213,8 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
       <OrcamentoFormulario aberto={editando} orcamento={o} onFechar={() => setEditando(false)}
         onSalvo={() => { setEditando(false); avisar("Dados salvos."); void dados.reload(); }} />
       {atual && (
-        <LinhaFormulario linha={linha} versionId={atual.id} ordem={atual.linhas.length + 1} onFechar={() => setLinha(null)}
+        <LinhaFormulario linha={linha} versionId={atual.id} ordem={Math.max(0, ...atual.linhas.map((l) => l.ordem)) + 1}
+          projetos={projetosDoOrcamento(atual.linhas)} onFechar={() => setLinha(null)}
           antesDeSalvar={confirmarSeAprovado}
           onPronto={() => { setLinha(null); void dados.reload(); }} />
       )}
@@ -264,14 +265,15 @@ export function ListaDecisoes({ decisoes }: { decisoes: DecisaoOrcamento[] }) {
 
 // ------------------------------------------------------------------
 
-function LinhaFormulario({ linha, versionId, ordem, onFechar, onPronto, antesDeSalvar }: {
-  linha: LinhaOrcamento | "nova" | null; versionId: string; ordem: number; onFechar: () => void; onPronto: () => void;
+function LinhaFormulario({ linha, versionId, ordem, projetos, onFechar, onPronto, antesDeSalvar }: {
+  linha: LinhaOrcamento | "nova" | null; versionId: string; ordem: number; projetos: string[]; onFechar: () => void; onPronto: () => void;
   antesDeSalvar?: () => boolean;
 }) {
   const aberto = linha !== null;
   const existente = linha && linha !== "nova" ? linha : null;
   const [plataforma, setPlataforma] = useState(PLATAFORMAS[0]);
   const [outra, setOutra] = useState("");
+  const [projeto, setProjeto] = useState("");
   const [descricao, setDescricao] = useState("");
   const [valor, setValor] = useState("");
   const [erro, setErro] = useState<string | null>(null);
@@ -282,10 +284,11 @@ function LinhaFormulario({ linha, versionId, ordem, onFechar, onPronto, antesDeS
     const conhecida = existente ? PLATAFORMAS.includes(existente.plataforma) : true;
     setPlataforma(existente ? (conhecida ? existente.plataforma : OUTRA_PLATAFORMA) : PLATAFORMAS[0]);
     setOutra(existente && !conhecida ? existente.plataforma : "");
+    setProjeto(existente ? existente.projeto ?? "" : projetos.at(-1) ?? "");
     setDescricao(existente?.descricao ?? "");
     setValor(existente ? moedaParaCampo(existente.valor) : "");
     setErro(null);
-  }, [aberto, existente]);
+  }, [aberto, existente]); // projetos: só na abertura
 
   const nome = plataforma === OUTRA_PLATAFORMA ? outra.trim() : plataforma;
   const numero = lerMoeda(valor);
@@ -295,9 +298,9 @@ function LinhaFormulario({ linha, versionId, ordem, onFechar, onPronto, antesDeS
   async function salvar(e: FormEvent) {
     e.preventDefault();
     setErro(null);
-    if (!nome) return setErro("Digite o nome da plataforma.");
+    if (!nome) return setErro("Digite o nome do canal.");
     if (!numero || numero <= 0) return setErro("Digite o valor do boleto, por exemplo 1.100,00.");
-    const campos: CamposLinha = { plataforma: nome, descricao: descricao.trim() || null, valor: numero };
+    const campos: CamposLinha = { projeto: projeto.trim() || null, plataforma: nome, descricao: descricao.trim() || null, valor: numero };
     if (antesDeSalvar && !antesDeSalvar()) return;
     setSalvando(true);
     try {
@@ -319,16 +322,21 @@ function LinhaFormulario({ linha, versionId, ordem, onFechar, onPronto, antesDeS
       </>}>
       <form id="form-linha" onSubmit={salvar} noValidate className="pilha">
         {erro && <div className="aviso aviso-erro" role="alert"><p>{erro}</p></div>}
-        <CampoSelecao rotulo="Plataforma" value={plataforma} onChange={(e) => setPlataforma(e.target.value)}>
+        <Campo rotulo="Projeto" value={projeto} onChange={(e) => setProjeto(e.target.value)} list="projetos-orcamento" maxLength={80}
+          placeholder="Ex.: Institucional, Revista, Ebook Energia"
+          ajuda={projetos.length ? "Escolha um projeto da lista ou digite um novo. As linhas do mesmo projeto ficam juntas na tabela." : "As linhas do mesmo projeto ficam juntas na tabela."} />
+        <datalist id="projetos-orcamento">{projetos.map((p) => <option key={p} value={p} />)}</datalist>
+        <CampoSelecao rotulo="Canal" value={plataforma} onChange={(e) => setPlataforma(e.target.value)}>
           {PLATAFORMAS.map((p) => <option key={p} value={p}>{p}</option>)}
           <option value={OUTRA_PLATAFORMA}>Outra</option>
         </CampoSelecao>
         {plataforma === OUTRA_PLATAFORMA && (
-          <Campo rotulo="Nome da plataforma" value={outra} onChange={(e) => setOutra(e.target.value)} autoFocus />
+          <Campo rotulo="Nome do canal" value={outra} onChange={(e) => setOutra(e.target.value)} autoFocus />
         )}
-        <Campo rotulo="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)}
-          placeholder="Ex.: Leads, Remarketing" ajuda="Opcional. Use para separar mais de uma linha da mesma plataforma." maxLength={200} />
-        <Campo rotulo="Valor do boleto (R$)" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)}
+        <Campo rotulo="Objetivo" value={descricao} onChange={(e) => setDescricao(e.target.value)}
+          placeholder="Ex.: Impulsionamento, Branding, HR | Comercial" maxLength={200}
+          ajuda="Linhas seguidas do mesmo projeto com o mesmo objetivo ficam agrupadas na tabela." />
+        <Campo rotulo="Verba fixa mensal (R$)" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)}
           placeholder="1.100,00" erro={valor && numero === null ? "Use o formato 1.100,00." : null}
           ajuda={aliquota > 0 ? `Valor total que o cliente paga. O imposto do ${nome} (${formatarAliquota(aliquota)}) já está incluso.` : "Valor total que o cliente paga."} />
         {conta && (
