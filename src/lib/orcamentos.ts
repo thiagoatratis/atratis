@@ -158,3 +158,10 @@ export async function listarDecisoesOrcamento(budgetId: string): Promise<Decisao
   erro(error);
   return ((data ?? []) as DecisaoOrcamento[]).map((d) => ({ ...d, total: Number(d.total) }));
 }
+
+export async function aprovarOrcamentoEmReuniao(id: string, quando: string, quem: string, observacao: string): Promise<void> {
+  const { error } = await supabase.rpc("aprovar_orcamento_em_reuniao", {
+    p_budget: id, p_reuniao_em: quando, p_aprovado_por: quem.trim(), p_observacao: observacao.trim() || null,
+  });
+  erro(error);
+}

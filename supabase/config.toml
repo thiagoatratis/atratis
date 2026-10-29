@@ -12,3 +12,7 @@ enable_signup = false
 # A função valida o token do usuário por conta própria (auth.getUser) e
 # confere no banco se ele é administrador ativo.
 verify_jwt = false
+
+[functions.enviar-pis]
+# Confere o token do usuário (auth.getUser) e o acesso dele ao cliente no banco.
+verify_jwt = false

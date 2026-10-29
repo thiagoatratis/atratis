@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  LuArrowLeft, LuCopyPlus, LuDownload, LuExternalLink, LuEye, LuFileUp, LuLink, LuMerge, LuPencil, LuScissors, LuSend, LuTrash2,
+  LuArrowLeft, LuCopyPlus, LuDownload, LuHandshake, LuExternalLink, LuEye, LuFileUp, LuLink, LuMerge, LuPencil, LuScissors, LuSend, LuTrash2,
 } from "react-icons/lu";
 import { useAsync } from "../lib/useAsync";
 import { listarClientes, listarUsuarios } from "../lib/api";
 import {
-  SECOES_SUGERIDAS, cancelarPlano, contagemSecoes, enviarPdfPlano, enviarPlano, listarDecisoesPlano, listarVersoesPlano,
+  SECOES_SUGERIDAS, aprovarPlanoEmReuniao, cancelarPlano, contagemSecoes, enviarPdfPlano, enviarPlano, listarDecisoesPlano, listarVersoesPlano,
   baixarPdfPlano, chaveLink, definirLinkPlano, nomeArquivoPlano, novaVersaoPlano, obterPlano, paginasDaSecao, plural, removerMaterialPlano,
   salvarNotaVersao, salvarSecoes, slidesCitados, validarLink, type SecaoEditavel,
 } from "../lib/planos";
@@ -23,6 +23,8 @@ import {
   STATUS_PLANO, STATUS_SECAO, STATUS_VERSAO_PLANO,
   type DecisaoSecaoPlano, type Plano, type SecaoPlano, type VersaoPlano,
 } from "../types";
+import { autoriaDecisao, observacaoReuniao } from "../lib/reuniao";
+import { AprovarEmReuniao } from "../components/AprovarEmReuniao";
 
 /** Aprovação de uma versão anterior que pode ser mantida numa seção nova. */
 interface AprovacaoAnterior { id: string; nome: string; versao: number; paginas: string; tamanho: number }
@@ -48,6 +50,7 @@ export function PlanoDetalhe({ id }: { id: string }) {
   const [cancelando, setCancelando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [avisarCliente, setAvisarCliente] = useState(false);
+  const [reuniao, setReuniao] = useState(false);
   const [secoesSujas, setSecoesSujas] = useState(false);
 
   const atualId = dados.data?.versoes.at(-1)?.id;
@@ -122,6 +125,10 @@ export function PlanoDetalhe({ id }: { id: string }) {
   }
 
   const ajustes = atual?.status === "concluida" ? atual.secoes.filter((s) => s.status === "ajuste_solicitado") : [];
+  // Seções que a aprovação em reunião aprova (no rascunho, ele é enviado junto).
+  const semDecisao = atual?.secoes.filter((s) => s.status === "pendente" || s.status === "ajuste_solicitado") ?? [];
+  const podeAprovarEmReuniao = editavel && p.status !== "aprovado" && semDecisao.length > 0
+    && (atual?.status !== "rascunho" || !motivoNaoEnvia);
 
   return (
     <>
@@ -133,6 +140,7 @@ export function PlanoDetalhe({ id }: { id: string }) {
           <>
             <Botao onClick={() => setEditando(true)}><LuPencil /> Editar dados</Botao>
             {p.enviado_em && <Botao onClick={() => setAvisarCliente(true)}><LuLink /> Link para o cliente</Botao>}
+            {podeAprovarEmReuniao && <Botao onClick={() => setReuniao(true)}><LuHandshake /> Aprovado em reunião</Botao>}
             {atual?.status === "rascunho" ? (
               <Botao variante="primario" disabled={!!motivoNaoEnvia} carregando={enviando} onClick={() => void enviar()}
                 title={motivoNaoEnvia ?? undefined}>
@@ -239,6 +247,15 @@ export function PlanoDetalhe({ id }: { id: string }) {
         onPronto={() => { setNovaVersao(false); avisar("Versão nova criada. Suba o PDF corrigido e confira as seções."); void dados.reload(); }} />
       <Cancelar aberto={cancelando} planId={p.id} onFechar={() => setCancelando(false)}
         onPronto={() => { setCancelando(false); avisar("Plano cancelado."); void dados.reload(); }} />
+      <AprovarEmReuniao aberto={reuniao} onFechar={() => setReuniao(false)}
+        oQue={<>{semDecisao.length === 1 ? "a seção" : `as ${semDecisao.length} seções`} sem decisão do plano <strong>{p.titulo}</strong> ({semDecisao.map((s) => s.nome).join(", ")})</>}
+        aviso={atual?.status === "rascunho" ? "A versão ainda não foi enviada: ela fica enviada e aprovada ao mesmo tempo." : undefined}
+        onConfirmar={async (quando, quem, obs) => {
+          await aprovarPlanoEmReuniao(p.id, quando, quem, obs);
+          setReuniao(false);
+          avisar("Aprovação em reunião registrada.");
+          await dados.reload();
+        }} />
       <AvisarCliente aberto={avisarCliente} onFechar={() => setAvisarCliente(false)}
         caminho={`/planos/${p.id}`} clientId={p.client_id}
         mensagem={(link, pessoal) => mensagemPlano(p, versoes.filter((v) => v.status !== "rascunho").at(-1), link, pessoal)} />
@@ -703,9 +720,9 @@ export function HistoricoSecao({ decisoes }: { decisoes: DecisaoSecaoPlano[] }) 
     <ul className="decisoes-orcamento">
       {decisoes.map((d) => (
         <li key={d.id} className={d.decisao === "aprovada" ? "decisao-ok" : "decisao-alt"}>
-          {d.decisao === "aprovada" ? "Aprovada" : "Ajuste pedido"} por {d.user_nome || d.user_email} em {formatarDataHora(d.created_at)}
+          {d.decisao === "aprovada" ? "Aprovada" : "Ajuste pedido"} {autoriaDecisao(d)}
           {d.slides.length ? ` (${slidesCitados(d.slides)})` : ""}
-          {d.comentario ? `: "${d.comentario}"` : "."}
+          {d.comentario ? `: "${d.comentario}"` : "."}{observacaoReuniao(d)}
         </li>
       ))}
     </ul>

@@ -257,3 +257,10 @@ export function nomeArquivoPlano(p: Plano, v: VersaoPlano): string {
 
 /** "1 seção", "3 seções". */
 export const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
+
+export async function aprovarPlanoEmReuniao(id: string, quando: string, quem: string, observacao: string): Promise<void> {
+  const { error } = await supabase.rpc("aprovar_plano_em_reuniao", {
+    p_plan: id, p_reuniao_em: quando, p_aprovado_por: quem.trim(), p_observacao: observacao.trim() || null,
+  });
+  erro(error);
+}

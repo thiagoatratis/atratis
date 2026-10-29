@@ -231,3 +231,10 @@ export async function comentar(requestId: string, corpo: string, pieceId?: strin
   });
   erro(error);
 }
+
+export async function aprovarSolicitacaoEmReuniao(id: string, quando: string, quem: string, observacao: string): Promise<void> {
+  const { error } = await supabase.rpc("aprovar_solicitacao_em_reuniao", {
+    p_request: id, p_reuniao_em: quando, p_aprovado_por: quem.trim(), p_observacao: observacao.trim() || null,
+  });
+  erro(error);
+}

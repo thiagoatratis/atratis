@@ -1,10 +1,11 @@
 // Pedidos de Inserção: emissão (numeração no banco), PDF no Storage e e-mail.
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { ErroApp } from "./api";
 import { erro } from "./criativos";
 import { formatarMes, formatarMoeda } from "./dinheiro";
 import { gerarPdfPI } from "./pdfPi";
-import type { CamposEmissaoPI, PedidoInsercao } from "../types";
+import type { CamposEmissaoPI, EnvioPI, PedidoInsercao } from "../types";
 
 const BUCKET = "pis";
 
@@ -114,4 +115,33 @@ export function emailPadrao(pis: PedidoInsercao[], linkPortal: string): { assunt
     "Atratis Digital",
   ].join("\n");
   return { assunto, corpo };
+}
+
+// ---------------- E-mail ----------------
+
+/** Envia os P.I.s pelo Gmail da Atratis (função de servidor "enviar-pis"), com os PDFs anexos. */
+export async function enviarPisPeloSistema(dados: { pis: string[]; para: string[]; assunto: string; corpo: string }): Promise<void> {
+  const { error } = await supabase.functions.invoke("enviar-pis", { body: dados });
+  if (error) {
+    if (error instanceof FunctionsHttpError) {
+      const resp = await error.context.json().catch(() => null);
+      throw new ErroApp(resp?.erro ?? "O envio foi recusado.");
+    }
+    throw new ErroApp("Não foi possível falar com a função de envio. Confira se ela foi publicada no Supabase.");
+  }
+}
+
+export async function listarEnviosPI(budgetId: string): Promise<EnvioPI[]> {
+  const { data, error } = await supabase.from("pi_envios")
+    .select("id, budget_id, numeros, para, assunto, enviado_por_nome, created_at")
+    .eq("budget_id", budgetId).order("created_at", { ascending: false });
+  erro(error);
+  return (data ?? []) as EnvioPI[];
+}
+
+/** Separa e confere uma lista de e-mails digitada (vírgula, ponto e vírgula, espaço ou linha). */
+export function lerEmails(texto: string): { validos: string[]; invalidos: string[] } {
+  const partes = [...new Set(texto.split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean))];
+  const ok = (e: string) => /^[^@\s,;<>"]+@[^@\s,;<>"]+\.[^@\s,;<>"]+$/.test(e);
+  return { validos: partes.filter(ok), invalidos: partes.filter((e) => !ok(e)) };
 }

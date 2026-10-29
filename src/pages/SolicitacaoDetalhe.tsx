@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { LuArrowLeft, LuLink, LuPencil, LuPlus, LuSend, LuUpload } from "react-icons/lu";
+import { LuArrowLeft, LuHandshake, LuLink, LuPencil, LuPlus, LuSend, LuUpload } from "react-icons/lu";
 import { useAsync } from "../lib/useAsync";
 import { listarClientes, listarUsuarios } from "../lib/api";
 import {
-  cancelarSolicitacao, criarPeca, criarVersaoArquivo, criarVersaoLink, descartarRascunho, enviarSolicitacao,
+  aprovarSolicitacaoEmReuniao, cancelarSolicitacao, criarPeca, criarVersaoArquivo, criarVersaoLink, descartarRascunho, enviarSolicitacao,
   excluirPeca, listarCampanhas, listarComentarios, listarDecisoes, listarPecas, obterObservacoesSolicitacao,
   obterSolicitacao, retirarPeca, salvarObservacoesSolicitacao, validarArquivo, versaoAtual,
 } from "../lib/criativos";
@@ -19,6 +19,8 @@ import { Conversa } from "../components/Conversa";
 import { AvisarCliente } from "../components/AvisarCliente";
 import { SolicitacaoFormulario } from "./SolicitacaoFormulario";
 import { STATUS_SOLICITACAO, STATUS_VERSAO, type Decisao, type Peca, type Solicitacao, type Versao } from "../types";
+import { autoriaDecisao, observacaoReuniao } from "../lib/reuniao";
+import { AprovarEmReuniao } from "../components/AprovarEmReuniao";
 
 export function SolicitacaoDetalhe({ id }: { id: string }) {
   const { perfil } = useAuth();
@@ -42,6 +44,7 @@ export function SolicitacaoDetalhe({ id }: { id: string }) {
   const [cancelando, setCancelando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [avisarCliente, setAvisarCliente] = useState(false);
+  const [reuniao, setReuniao] = useState(false);
 
   if (dados.loading && !dados.data) return <Carregando />;
   if (dados.error) return <AvisoErro erro={dados.error} tentarDeNovo={dados.reload} />;
@@ -59,6 +62,7 @@ export function SolicitacaoDetalhe({ id }: { id: string }) {
   const devolvidas = ativas.filter((p) => versaoAtual(p)?.status === "alteracoes_solicitadas");
   const semConteudo = ativas.filter((p) => !p.versoes.length);
   const podeEnviar = editavel && novas > 0 && devolvidas.length === 0;
+  const aprovaveis = atuais.filter((v) => v.status === "rascunho" || v.status === "pendente" || v.status === "alteracoes_solicitadas");
 
   async function enviar() {
     setEnviando(true);
@@ -84,6 +88,7 @@ export function SolicitacaoDetalhe({ id }: { id: string }) {
           <>
             <Botao onClick={() => setEditando(true)}><LuPencil /> Editar dados</Botao>
             {s.enviado_em && <Botao onClick={() => setAvisarCliente(true)}><LuLink /> Link para o cliente</Botao>}
+            {aprovaveis.length > 0 && <Botao onClick={() => setReuniao(true)}><LuHandshake /> Aprovado em reunião</Botao>}
             <Botao variante="primario" disabled={!podeEnviar} carregando={enviando} onClick={() => void enviar()}
               title={podeEnviar ? undefined : novas === 0 ? "Adicione uma peça ou versão nova para enviar." : "Há peças com alterações pedidas."}>
               <LuSend /> {s.enviado_em ? "Reenviar ao cliente" : "Enviar ao cliente"}{novas > 0 ? ` (${novas})` : ""}
@@ -91,6 +96,16 @@ export function SolicitacaoDetalhe({ id }: { id: string }) {
           </>
         )}
       />
+
+      <AprovarEmReuniao aberto={reuniao} onFechar={() => setReuniao(false)}
+        oQue={aprovaveis.length === 1 ? "1 peça desta solicitação" : `as ${aprovaveis.length} peças desta solicitação que aguardam decisão`}
+        aviso={novas > 0 ? `${novas === 1 ? "1 peça ainda não enviada vai" : `${novas} peças ainda não enviadas vão`} junto e fica${novas === 1 ? "" : "m"} aprovada${novas === 1 ? "" : "s"}.` : undefined}
+        onConfirmar={async (quando, quem, obs) => {
+          await aprovarSolicitacaoEmReuniao(s.id, quando, quem, obs);
+          setReuniao(false);
+          avisar("Aprovação em reunião registrada.");
+          await dados.reload();
+        }} />
 
       <AvisarCliente aberto={avisarCliente} onFechar={() => setAvisarCliente(false)}
         caminho={`/aprovacoes/${s.id}`} clientId={s.client_id}
@@ -227,8 +242,8 @@ function CartaoPeca({ peca, solicitacao, decisoes, editavel, onMudou }: {
             {vista.observacao && <p className="suave">O que mudou: {vista.observacao}</p>}
             {decisoesDaVista.map((d) => (
               <p key={d.id} className={d.decisao === "aprovado" ? "decisao-ok" : "decisao-alt"}>
-                {d.decisao === "aprovado" ? "Aprovada" : "Alterações pedidas"} por {d.user_nome || d.user_email} em {formatarDataHora(d.created_at)}
-                {d.comentario ? `: "${d.comentario}"` : "."}
+                {d.decisao === "aprovado" ? "Aprovada" : "Alterações pedidas"} {autoriaDecisao(d)}
+                {d.comentario ? `: "${d.comentario}"` : "."}{observacaoReuniao(d)}
               </p>
             ))}
           </div>

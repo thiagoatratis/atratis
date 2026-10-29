@@ -1,10 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { LuArrowLeft, LuCopyPlus, LuLink, LuPencil, LuPlus, LuSend } from "react-icons/lu";
+import { LuArrowLeft, LuCopyPlus, LuHandshake, LuLink, LuPencil, LuPlus, LuSend } from "react-icons/lu";
 import { useAsync } from "../lib/useAsync";
 import { listarClientes, listarUsuarios } from "../lib/api";
 import { listarCampanhas } from "../lib/criativos";
 import {
-  adicionarLinha, atualizarLinha, cancelarOrcamento, enviarOrcamento, excluirLinha, listarAlteracoesOrcamento, listarDecisoesOrcamento,
+  adicionarLinha, aprovarOrcamentoEmReuniao, atualizarLinha, cancelarOrcamento, enviarOrcamento, excluirLinha, listarAlteracoesOrcamento, listarDecisoesOrcamento,
   listarVersoes, novaVersaoOrcamento, obterObservacoesOrcamento, obterOrcamento, salvarObservacoesOrcamento,
   tituloOrcamento, totais, type CamposLinha,
 } from "../lib/orcamentos";
@@ -25,6 +25,8 @@ import { OrcamentoFormulario } from "./OrcamentoFormulario";
 import {
   STATUS_ORCAMENTO, STATUS_VERSAO_ORCAMENTO, type DecisaoOrcamento, type LinhaOrcamento, type Orcamento,
 } from "../types";
+import { autoriaDecisao, observacaoReuniao } from "../lib/reuniao";
+import { AprovarEmReuniao } from "../components/AprovarEmReuniao";
 
 export function OrcamentoDetalhe({ id }: { id: string }) {
   const avisar = useAviso();
@@ -50,6 +52,7 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
   const [cancelando, setCancelando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [avisarCliente, setAvisarCliente] = useState(false);
+  const [reuniao, setReuniao] = useState(false);
 
   const atualId = dados.data?.versoes.at(-1)?.id;
   useEffect(() => setVerId(atualId), [atualId]);
@@ -71,6 +74,8 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
   const enviada = atual?.status !== "rascunho";
   const reenviar = atual?.status === "alteracoes_solicitadas";
   const podeEnviar = editavel && (atual?.status === "rascunho" || reenviar) && (atual?.linhas.length ?? 0) > 0;
+  const podeAprovarEmReuniao = editavel && (atual?.linhas.length ?? 0) > 0
+    && (atual?.status === "rascunho" || atual?.status === "pendente" || reenviar);
 
   // Mudança em orçamento já aprovado: continua aprovado, mas o P.I. emitido não muda.
   const confirmarSeAprovado = () => atual?.status !== "aprovado" || window.confirm(
@@ -114,6 +119,7 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
           <>
             <Botao onClick={() => setEditando(true)}><LuPencil /> Editar dados</Botao>
             {o.enviado_em && <Botao onClick={() => setAvisarCliente(true)}><LuLink /> Link para o cliente</Botao>}
+            {podeAprovarEmReuniao && <Botao onClick={() => setReuniao(true)}><LuHandshake /> Aprovado em reunião</Botao>}
             {atual?.status !== "rascunho" && (
               <Botao onClick={() => setNovaVersao(true)}><LuCopyPlus /> Nova versão</Botao>
             )}
@@ -215,6 +221,15 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
         onPronto={() => { setNovaVersao(false); avisar("Versão nova criada. Ajuste os valores e reenvie."); void dados.reload(); }} />
       <Cancelar aberto={cancelando} budgetId={o.id} onFechar={() => setCancelando(false)}
         onPronto={() => { setCancelando(false); avisar("Orçamento cancelado."); void dados.reload(); }} />
+      <AprovarEmReuniao aberto={reuniao} onFechar={() => setReuniao(false)}
+        oQue={<>o orçamento <strong>{tituloOrcamento(o)}</strong> ({formatarMoeda(totais(atual?.linhas ?? []).valor)})</>}
+        aviso={atual?.status === "rascunho" ? "O orçamento ainda não foi enviado: ele fica enviado e aprovado ao mesmo tempo." : undefined}
+        onConfirmar={async (quando, quem, obs) => {
+          await aprovarOrcamentoEmReuniao(o.id, quando, quem, obs);
+          setReuniao(false);
+          avisar("Aprovação em reunião registrada. Agora é só emitir os P.I.s logo abaixo dos valores.");
+          await dados.reload();
+        }} />
       <AvisarCliente aberto={avisarCliente} onFechar={() => setAvisarCliente(false)}
         caminho={`/orcamentos/${o.id}`} clientId={o.client_id}
         mensagem={(link, pessoal) => mensagemOrcamento(o, totais(atual?.linhas ?? []).valor, link, pessoal)} />
@@ -239,8 +254,8 @@ export function ListaDecisoes({ decisoes }: { decisoes: DecisaoOrcamento[] }) {
     <ul className="decisoes-orcamento">
       {decisoes.map((d) => (
         <li key={d.id} className={d.decisao === "aprovado" ? "decisao-ok" : "decisao-alt"}>
-          {d.decisao === "aprovado" ? "Aprovado" : "Alteração pedida"} por {d.user_nome || d.user_email} em {formatarDataHora(d.created_at)}
-          {" "}(total {formatarMoeda(d.total)}){d.comentario ? `: "${d.comentario}"` : "."}
+          {d.decisao === "aprovado" ? "Aprovado" : "Alteração pedida"} {autoriaDecisao(d)}
+          {" "}(total {formatarMoeda(d.total)}){d.comentario ? `: "${d.comentario}"` : "."}{observacaoReuniao(d)}
         </li>
       ))}
     </ul>

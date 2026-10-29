@@ -16,6 +16,7 @@ import { TabelaOrcamento } from "../components/TabelaOrcamento";
 import { PedidosInsercao } from "../components/PedidosInsercao";
 import { HistoricoOrcamento, ultimaAlteracao } from "../components/HistoricoOrcamento";
 import { STATUS_ORCAMENTO, STATUS_VERSAO_ORCAMENTO } from "../types";
+import { autoriaDecisao, observacaoReuniao } from "../lib/reuniao";
 
 export function AprovacaoOrcamento({ id }: { id: string }) {
   const { perfil } = useAuth();
@@ -155,8 +156,8 @@ export function AprovacaoOrcamento({ id }: { id: string }) {
           )}
           {minha && (
             <p className={minha.decisao === "aprovado" ? "decisao-ok" : "decisao-alt"}>
-              {minha.decisao === "aprovado" ? "Aprovado" : "Alteração pedida"} por {minha.user_nome || minha.user_email} em {formatarDataHora(minha.created_at)}
-              {minha.comentario ? `: "${minha.comentario}"` : "."}
+              {minha.decisao === "aprovado" ? "Aprovado" : "Alteração pedida"} {autoriaDecisao(minha)}
+              {minha.comentario ? `: "${minha.comentario}"` : "."}{observacaoReuniao(minha)}
             </p>
           )}
 
@@ -169,7 +170,7 @@ export function AprovacaoOrcamento({ id }: { id: string }) {
                   return (
                     <li key={v.id}>
                       <strong>Versão {v.numero}</strong>, total {formatarMoeda(totais(v.linhas).valor)}:
-                      {d ? ` ${d.decisao === "aprovado" ? "aprovada" : "com alteração pedida"} em ${formatarDataHora(d.created_at)}${d.comentario ? ` ("${d.comentario}")` : ""}`
+                      {d ? ` ${d.decisao === "aprovado" ? "aprovada" : "com alteração pedida"} ${autoriaDecisao(d)}${d.comentario ? ` ("${d.comentario}")` : ""}`
                         : v.status === "substituida" ? " substituída pela Atratis antes da decisão" : " sem decisão"}
                     </li>
                   );

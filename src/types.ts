@@ -163,6 +163,11 @@ export interface Decisao {
   user_id: string | null;
   user_email: string | null;
   user_nome: string | null;
+  /** "reuniao": registrada pela equipe depois de aprovação em reunião. */
+  via?: "portal" | "reuniao";
+  reuniao_em?: string | null;
+  aprovado_por_cliente?: string | null;
+  observacao_reuniao?: string | null;
   created_at: string;
 }
 
@@ -256,6 +261,11 @@ export interface DecisaoOrcamento {
   user_id: string | null;
   user_email: string | null;
   user_nome: string | null;
+  /** "reuniao": registrada pela equipe depois de aprovação em reunião. */
+  via?: "portal" | "reuniao";
+  reuniao_em?: string | null;
+  aprovado_por_cliente?: string | null;
+  observacao_reuniao?: string | null;
   created_at: string;
 }
 
@@ -421,6 +431,11 @@ export interface DecisaoSecaoPlano {
   user_id: string | null;
   user_email: string | null;
   user_nome: string | null;
+  /** "reuniao": registrada pela equipe depois de aprovação em reunião. */
+  via?: "portal" | "reuniao";
+  reuniao_em?: string | null;
+  aprovado_por_cliente?: string | null;
+  observacao_reuniao?: string | null;
   created_at: string;
 }
 
@@ -439,5 +454,16 @@ export interface AlteracaoOrcamento {
   status_orcamento: StatusOrcamento;
   user_nome: string | null;
   user_email: string | null;
+  created_at: string;
+}
+
+/** Envio de P.I.s por e-mail feito pelo sistema. */
+export interface EnvioPI {
+  id: number;
+  budget_id: string;
+  numeros: string[];
+  para: string[];
+  assunto: string;
+  enviado_por_nome: string | null;
   created_at: string;
 }

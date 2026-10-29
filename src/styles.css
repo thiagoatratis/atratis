@@ -641,3 +641,19 @@ a.celula-titulo:hover { text-decoration: underline; text-underline-offset: 3px; 
 .historico-orcamento h3 { margin: 0 0 8px; font-size: 14px; }
 .historico-orcamento ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 .historico-marca { margin-left: 6px; font-size: 11px; }
+
+/* ---------------- E-mail dos P.I.s ---------------- */
+.acoes-topo { display: flex; gap: 8px; flex-wrap: wrap; }
+.pilha-curta { display: flex; flex-direction: column; gap: 10px; }
+.chip svg { width: 14px; height: 14px; vertical-align: -2px; }
+.linha-adicionar { display: flex; gap: 8px; align-items: flex-start; }
+.linha-adicionar .campo { flex: 1; }
+.linha-adicionar > .btn { margin-top: 26px; min-height: 42px; }
+.envios-pi { margin-top: 16px; }
+.titulo-sub { font-size: 14px; font-weight: 700; margin: 0 0 8px; }
+.envios-pi ul { list-style: none; margin: 0; padding: 0; font-size: 13.5px; }
+.envios-pi li { padding: 6px 0; border-top: 1px solid var(--linha); overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .linha-adicionar { flex-direction: column; align-items: stretch; }
+  .linha-adicionar > .btn { margin-top: 0; }
+}
