@@ -163,6 +163,11 @@ export interface Decisao {
   user_id: string | null;
   user_email: string | null;
   user_nome: string | null;
+  /** "reuniao": registrada pela equipe depois de aprovação em reunião. */
+  via?: "portal" | "reuniao";
+  reuniao_em?: string | null;
+  aprovado_por_cliente?: string | null;
+  observacao_reuniao?: string | null;
   created_at: string;
 }
 
@@ -225,7 +230,10 @@ export interface LinhaOrcamento {
   id: string;
   version_id: string;
   plataforma: string;
+  /** Na tela aparece como "Objetivo". */
   descricao: string | null;
+  /** Agrupa as linhas na tabela (ex.: Institucional, Revista). */
+  projeto: string | null;
   valor: number;
   aliquota: number;
   imposto: number;
@@ -256,6 +264,11 @@ export interface DecisaoOrcamento {
   user_id: string | null;
   user_email: string | null;
   user_nome: string | null;
+  /** "reuniao": registrada pela equipe depois de aprovação em reunião. */
+  via?: "portal" | "reuniao";
+  reuniao_em?: string | null;
+  aprovado_por_cliente?: string | null;
+  observacao_reuniao?: string | null;
   created_at: string;
 }
 
@@ -421,5 +434,41 @@ export interface DecisaoSecaoPlano {
   user_id: string | null;
   user_email: string | null;
   user_nome: string | null;
+  /** "reuniao": registrada pela equipe depois de aprovação em reunião. */
+  via?: "portal" | "reuniao";
+  reuniao_em?: string | null;
+  aprovado_por_cliente?: string | null;
+  observacao_reuniao?: string | null;
+  created_at: string;
+}
+
+/** Mudança nos valores de um orçamento depois de enviado (histórico visível à equipe e ao cliente). */
+export interface AlteracaoOrcamento {
+  id: number;
+  budget_id: string;
+  version_id: string;
+  acao: "incluida" | "alterada" | "removida";
+  plataforma: string;
+  descricao: string | null;
+  plataforma_antes: string | null;
+  descricao_antes: string | null;
+  projeto: string | null;
+  projeto_antes: string | null;
+  valor_antes: number | null;
+  valor_depois: number | null;
+  status_orcamento: StatusOrcamento;
+  user_nome: string | null;
+  user_email: string | null;
+  created_at: string;
+}
+
+/** Envio de P.I.s por e-mail feito pelo sistema. */
+export interface EnvioPI {
+  id: number;
+  budget_id: string;
+  numeros: string[];
+  para: string[];
+  assunto: string;
+  enviado_por_nome: string | null;
   created_at: string;
 }

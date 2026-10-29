@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
-import { LuBan, LuDownload, LuFileText, LuMail, LuPlus } from "react-icons/lu";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { LuBan, LuDownload, LuFileText, LuMail, LuPlus, LuSend, LuX } from "react-icons/lu";
 import { useAsync } from "../lib/useAsync";
-import { obterAgencia } from "../lib/api";
-import { baixarPdf, cancelarPI, emailPadrao, emitirPIs, listarPIs } from "../lib/pi";
+import { listarVinculos, obterAgencia } from "../lib/api";
+import {
+  baixarPdf, cancelarPI, emailPadrao, emitirPIs, enviarPisPeloSistema, lerEmails, listarEnviosPI, listarPIs, salvarPdf,
+} from "../lib/pi";
 import { gerarPdfPI, type DadosPdfPI } from "../lib/pdfPi";
 import { formatarMes, formatarMoeda } from "../lib/dinheiro";
 import { formatarData, formatarDataHora } from "../lib/format";
 import { Link } from "../lib/router";
 import { Botao, Campo, CampoTexto, Carregando, Modal, Selo, useAviso } from "./ui";
 import type {
-  Agencia, CamposEmissaoPI, Cliente, DadosEmpresaPI, Orcamento, PedidoInsercao, VersaoOrcamento,
+  Agencia, CamposEmissaoPI, Cliente, DadosEmpresaPI, EnvioPI, Orcamento, PedidoInsercao, VersaoOrcamento,
 } from "../types";
 
 const PRAZO_PADRAO = "Data do vencimento do boleto";
@@ -37,7 +39,8 @@ const agenciaPI = (a: Agencia | null): DadosEmpresaPI => ({
 
 /**
  * Seção de P.I.s do orçamento. A equipe emite (só de orçamento aprovado),
- * baixa, copia o e-mail e cancela; o cliente vê e baixa.
+ * baixa, envia por e-mail (pelo sistema ou pelo próprio e-mail) e cancela;
+ * o cliente vê e baixa.
  */
 export function PedidosInsercao({ orcamento, versao, cliente, campanha, equipe }: {
   orcamento: Orcamento;
@@ -48,6 +51,7 @@ export function PedidosInsercao({ orcamento, versao, cliente, campanha, equipe }
 }) {
   const avisar = useAviso();
   const pis = useAsync(() => listarPIs(orcamento.id), [orcamento.id, orcamento.status]);
+  const envios = useAsync(() => (equipe ? listarEnviosPI(orcamento.id) : Promise.resolve([] as EnvioPI[])), [orcamento.id, equipe]);
   const [emitindo, setEmitindo] = useState(false);
   const [email, setEmail] = useState<PedidoInsercao[] | null>(null);
   const [cancelando, setCancelando] = useState<PedidoInsercao | null>(null);
@@ -55,6 +59,7 @@ export function PedidosInsercao({ orcamento, versao, cliente, campanha, equipe }
 
   const podeEmitir = equipe && orcamento.status === "aprovado" && versao?.status === "aprovado";
   const lista = pis.data ?? [];
+  const emitidos = lista.filter((p) => p.status === "emitido");
   if (!podeEmitir && !lista.length && !pis.loading) return null;
 
   async function baixar(p: PedidoInsercao) {
@@ -73,7 +78,12 @@ export function PedidosInsercao({ orcamento, versao, cliente, campanha, equipe }
     <section className="pis" aria-labelledby="titulo-pis">
       <div className="secao-topo">
         <h2 id="titulo-pis" className="titulo-secao">Pedidos de Inserção</h2>
-        {podeEmitir && <Botao variante="primario" onClick={() => setEmitindo(true)}><LuPlus /> Gerar P.I.</Botao>}
+        {(podeEmitir || (equipe && emitidos.length > 0)) && (
+          <div className="acoes-topo">
+            {equipe && emitidos.length > 0 && <Botao onClick={() => setEmail(emitidos)}><LuMail /> Enviar por e-mail</Botao>}
+            {podeEmitir && <Botao variante="primario" onClick={() => setEmitindo(true)}><LuPlus /> Gerar P.I.</Botao>}
+          </div>
+        )}
       </div>
       {pis.loading && !pis.data ? <Carregando /> : !lista.length ? (
         <p className="suave">Orçamento aprovado. Gere o P.I. consolidado ou um por plataforma.</p>
@@ -105,7 +115,7 @@ export function PedidosInsercao({ orcamento, versao, cliente, campanha, equipe }
                     </Botao>
                     {equipe && p.status === "emitido" && (
                       <>
-                        <button type="button" className="icone-btn" title="Copiar e-mail" aria-label={`Copiar e-mail do P.I. ${p.numero}`}
+                        <button type="button" className="icone-btn" title="Enviar por e-mail" aria-label={`Enviar o P.I. ${p.numero} por e-mail`}
                           onClick={() => setEmail([p])}><LuMail /></button>
                         <button type="button" className="icone-btn perigo-texto" title="Cancelar P.I." aria-label={`Cancelar o P.I. ${p.numero}`}
                           onClick={() => setCancelando(p)}><LuBan /></button>
@@ -116,6 +126,21 @@ export function PedidosInsercao({ orcamento, versao, cliente, campanha, equipe }
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {equipe && (envios.data?.length ?? 0) > 0 && (
+        <div className="envios-pi">
+          <h3 className="titulo-sub">Enviados por e-mail pelo sistema</h3>
+          <ul>
+            {envios.data!.map((e) => (
+              <li key={e.id}>
+                <span className="tab-num">{formatarDataHora(e.created_at)}</span>
+                {" · "}{e.numeros.length === 1 ? `P.I. ${e.numeros[0]}` : `P.I.s ${e.numeros.join(", ")}`} para {e.para.join(", ")}
+                {e.enviado_por_nome && <span className="suave"> · por {e.enviado_por_nome}</span>}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -133,7 +158,10 @@ export function PedidosInsercao({ orcamento, versao, cliente, campanha, equipe }
             setEmail(novos);
           }} />
       )}
-      {email && <CopiarEmail pis={email} orcamento={orcamento} cliente={cliente} onFechar={() => setEmail(null)} />}
+      {email && (
+        <EmailPIs pis={email} orcamento={orcamento} cliente={cliente} onFechar={() => setEmail(null)}
+          onEnviado={() => { setEmail(null); void envios.reload(); void pis.reload(); }} />
+      )}
       <CancelarPI pi={cancelando} onFechar={() => setCancelando(null)}
         onPronto={() => { setCancelando(null); avisar("P.I. cancelado. O número não será reaproveitado."); void pis.reload(); }} />
     </section>
@@ -343,16 +371,76 @@ function EmitirPI({ aberto, orcamento, versao, cliente, campanhaPadrao, jaEmitid
   );
 }
 
-function CopiarEmail({ pis, orcamento, cliente, onFechar }: {
-  pis: PedidoInsercao[]; orcamento: Orcamento; cliente: Cliente | undefined; onFechar: () => void;
+type ModoEnvio = "sistema" | "manual";
+
+/**
+ * E-mail dos P.I.s. Duas formas: o sistema envia pelo Gmail da Atratis com os
+ * PDFs anexos (e registra o envio), ou a pessoa copia o texto, baixa os PDFs
+ * e manda pelo próprio e-mail. Destinatários: sugere os aprovadores do
+ * cliente e o e-mail de contato do cadastro; a equipe tira e põe na hora.
+ */
+function EmailPIs({ pis: oferecidos, orcamento, cliente, onFechar, onEnviado }: {
+  pis: PedidoInsercao[]; orcamento: Orcamento; cliente: Cliente | undefined; onFechar: () => void; onEnviado: () => void;
 }) {
   const avisar = useAviso();
   const link = `${window.location.origin}/orcamentos/${orcamento.id}`;
+  // Com vários P.I.s, a equipe escolhe quais vão (ex.: só os por plataforma).
+  const [marcados, setMarcados] = useState<string[]>(() => oferecidos.map((p) => p.id));
+  const pis = useMemo(() => oferecidos.filter((p) => marcados.includes(p.id)), [oferecidos, marcados]);
   const padrao = useMemo(() => emailPadrao(pis, link), [pis, link]);
-  const [para, setPara] = useState(cliente?.email_contato ?? "");
+  const vinculos = useAsync(() => listarVinculos(orcamento.client_id), [orcamento.client_id]);
+  const [modo, setModo] = useState<ModoEnvio>("sistema");
+  const [para, setPara] = useState<string[] | null>(null);
+  const [novo, setNovo] = useState("");
+  const [erroPara, setErroPara] = useState<string | null>(null);
   const [assunto, setAssunto] = useState(padrao.assunto);
   const [corpo, setCorpo] = useState(padrao.corpo);
   const [baixando, setBaixando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  // Texto padrão acompanha os P.I.s escolhidos (só quando a escolha muda).
+  const escolha = marcados.join(",");
+  const primeiraEscolha = useRef(escolha);
+  useEffect(() => {
+    if (escolha === primeiraEscolha.current) return;
+    primeiraEscolha.current = escolha;
+    setAssunto(padrao.assunto);
+    setCorpo(padrao.corpo);
+  }, [escolha, padrao]);
+
+  // Sugestões: aprovadores ativos do cliente + e-mail de contato do cadastro.
+  const sugestoes = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const v of vinculos.data ?? []) {
+      const e = v.profile?.email?.trim().toLowerCase();
+      if (e && v.ativo && v.pode_aprovar && v.profile?.ativo) m.set(e, v.profile.nome?.trim() || e);
+    }
+    const contato = cliente?.email_contato?.trim().toLowerCase();
+    if (contato && !m.has(contato)) m.set(contato, "Contato do cadastro");
+    return [...m].map(([email, nome]) => ({ email, nome }));
+  }, [vinculos.data, cliente?.email_contato]);
+
+  // Começa com todas as sugestões marcadas; a equipe tira o que não quiser.
+  useEffect(() => {
+    if (para === null && !vinculos.loading) setPara(sugestoes.map((s) => s.email));
+  }, [para, vinculos.loading, sugestoes]);
+
+  const lista = para ?? [];
+  const nomeDe = (e: string) => sugestoes.find((s) => s.email === e)?.nome;
+  const rotulo = (e: string) => { const n = nomeDe(e); return n && n !== e ? `${n} (${e})` : e; };
+  const naoMarcadas = sugestoes.filter((s) => !lista.includes(s.email));
+
+  function adicionar(): boolean {
+    const { validos, invalidos } = lerEmails(novo);
+    if (invalidos.length) {
+      setErroPara(`E-mail inválido: ${invalidos.join(", ")}`);
+      return false;
+    }
+    if (validos.length) setPara([...new Set([...lista, ...validos])]);
+    setNovo("");
+    setErroPara(null);
+    return true;
+  }
 
   async function copiar(texto: string, oque: string) {
     try {
@@ -363,9 +451,41 @@ function CopiarEmail({ pis, orcamento, cliente, onFechar }: {
     }
   }
 
+  async function enviarPeloSistema() {
+    setErro(null);
+    if (novo.trim() && !adicionar()) return;
+    const destino = [...new Set([...lista, ...lerEmails(novo).validos])];
+    if (!pis.length) return setErro("Marque pelo menos um P.I.");
+    if (pis.length > 20) return setErro("Envie no máximo 20 P.I.s por e-mail.");
+    if (!destino.length) return setErro("Escolha pelo menos um destinatário.");
+    if (destino.length > 10) return setErro("Use no máximo 10 destinatários.");
+    if (!assunto.trim() || !corpo.trim()) return setErro("Preencha o assunto e a mensagem.");
+    if (!window.confirm(`Enviar agora para ${destino.join(", ")}?\n\n${pis.length === 1 ? "O PDF vai anexo." : `Os ${pis.length} PDFs vão anexos.`}`)) return;
+    setEnviando(true);
+    try {
+      // O e-mail anexa o PDF guardado; se algum ainda não foi gerado, gera agora.
+      for (const p of pis) if (!p.pdf_path) await salvarPdf(p);
+      const { registrado } = await enviarPisPeloSistema({ pis: pis.map((p) => p.id), para: destino, assunto: assunto.trim(), corpo });
+      avisar(registrado
+        ? `E-mail enviado para ${destino.join(", ")}.`
+        : `E-mail enviado para ${destino.join(", ")}, mas o registro do envio falhou. Não envie de novo.`, registrado ? undefined : "erro");
+      onEnviado();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  const mailto = `mailto:${lista.map(encodeURIComponent).join(",")}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
+
   return (
-    <Modal aberto titulo={pis.length === 1 ? `E-mail do P.I. ${pis[0].numero}` : "E-mail dos P.I.s"} onFechar={onFechar} largura={640}
-      rodape={<>
+    <Modal aberto titulo={oferecidos.length === 1 ? `E-mail do P.I. ${oferecidos[0].numero}` : "E-mail dos P.I.s"}
+      onFechar={onFechar} largura={660}
+      rodape={modo === "sistema" ? <>
+        <Botao variante="fantasma" onClick={onFechar}>Fechar</Botao>
+        <Botao variante="primario" carregando={enviando} onClick={() => void enviarPeloSistema()}><LuSend /> Enviar agora</Botao>
+      </> : <>
         <Botao variante="fantasma" onClick={onFechar}>Fechar</Botao>
         <Botao carregando={baixando} onClick={async () => {
           setBaixando(true);
@@ -374,12 +494,73 @@ function CopiarEmail({ pis, orcamento, cliente, onFechar }: {
         <Botao variante="primario" onClick={() => void copiar(`${assunto}\n\n${corpo}`, "E-mail")}><LuMail /> Copiar e-mail</Botao>
       </>}>
       <div className="pilha">
-        <p className="suave">O sistema não envia e-mail. Copie o texto, baixe o PDF e mande pelo seu e-mail.
-          {para && <> Ou <a href={`mailto:${encodeURIComponent(para)}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`}>abra no seu programa de e-mail</a> (anexe o PDF antes de enviar).</>}</p>
-        <Campo rotulo="Para" type="email" value={para} onChange={(e) => setPara(e.target.value)}
-          ajuda={cliente?.email_contato ? "E-mail de contato do cadastro do cliente." : "O cliente não tem e-mail de contato no cadastro."} />
-        <Campo rotulo="Assunto" value={assunto} onChange={(e) => setAssunto(e.target.value)}
-          ajuda={<button type="button" className="link-discreto" onClick={() => void copiar(assunto, "Assunto")}>Copiar só o assunto</button>} />
+        <div className="segmentado" role="group" aria-label="Como enviar">
+          <button type="button" className={modo === "sistema" ? "on" : ""} aria-pressed={modo === "sistema"} onClick={() => setModo("sistema")}>
+            Enviar pelo sistema
+          </button>
+          <button type="button" className={modo === "manual" ? "on" : ""} aria-pressed={modo === "manual"} onClick={() => setModo("manual")}>
+            Enviar pelo meu e-mail
+          </button>
+        </div>
+        {modo === "sistema" ? (
+          <p className="suave">O e-mail sai do Gmail da Atratis com {pis.length === 1 ? "o PDF anexo" : `os ${pis.length} PDFs anexos`} e fica
+            registrado neste orçamento. Respostas do cliente vão para o seu e-mail.</p>
+        ) : (
+          <p className="suave">Copie o texto, baixe {pis.length === 1 ? "o PDF" : "os PDFs"} e mande pelo seu e-mail.
+            {lista.length > 0 && <> Ou <a href={mailto}>abra no seu programa de e-mail</a> (anexe {pis.length === 1 ? "o PDF" : "os PDFs"} antes de enviar).</>}</p>
+        )}
+        {erro && <div className="aviso aviso-erro" role="alert"><p>{erro}</p></div>}
+
+        {oferecidos.length > 1 && (
+          <fieldset className="grupo">
+            <legend>P.I.s</legend>
+            <div className="opcoes-radio">
+              {oferecidos.map((p) => (
+                <label key={p.id} className="check">
+                  <input type="checkbox" checked={marcados.includes(p.id)}
+                    onChange={(e) => setMarcados(e.target.checked ? [...marcados, p.id] : marcados.filter((x) => x !== p.id))} />
+                  <span>P.I. {p.numero}: {p.veiculacao}, {formatarMoeda(p.valor)} <small className="suave">(emitido em {formatarData(p.data_emissao)})</small></span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+
+        <fieldset className="grupo">
+          <legend>Para</legend>
+          {vinculos.loading && para === null ? <p className="suave pequeno">Carregando os aprovadores do cliente…</p> : (
+            <div className="pilha-curta">
+              {lista.length > 0 ? (
+                <div className="chips">
+                  {lista.map((e) => (
+                    <button key={e} type="button" className="chip on" title="Tirar da lista" aria-label={`Tirar ${e} da lista`}
+                      onClick={() => setPara(lista.filter((x) => x !== e))}>
+                      {rotulo(e)} <LuX aria-hidden />
+                    </button>
+                  ))}
+                </div>
+              ) : <p className="suave pequeno">Ninguém na lista ainda.</p>}
+              {naoMarcadas.length > 0 && (
+                <div className="chips" aria-label="Sugestões">
+                  {naoMarcadas.map((s) => (
+                    <button key={s.email} type="button" className="chip" onClick={() => setPara([...lista, s.email])}>
+                      <LuPlus aria-hidden /> {rotulo(s.email)}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <form className="linha-adicionar" onSubmit={(e) => { e.preventDefault(); adicionar(); }}>
+                <Campo rotulo="Adicionar e-mail" type="text" inputMode="email" value={novo} erro={erroPara}
+                  placeholder="nome@empresa.com.br" onChange={(e) => { setNovo(e.target.value); setErroPara(null); }}
+                  ajuda={!sugestoes.length ? "O cliente não tem aprovador nem e-mail de contato no cadastro." : "Separe vários com vírgula."} />
+                <Botao type="submit" disabled={!novo.trim()}><LuPlus /> Adicionar</Botao>
+              </form>
+            </div>
+          )}
+        </fieldset>
+
+        <Campo rotulo="Assunto" value={assunto} maxLength={200} onChange={(e) => setAssunto(e.target.value)}
+          ajuda={modo === "manual" && <button type="button" className="link-discreto" onClick={() => void copiar(assunto, "Assunto")}>Copiar só o assunto</button>} />
         <CampoTexto rotulo="Mensagem" rows={12} value={corpo} onChange={(e) => setCorpo(e.target.value)} />
         <p className="suave pequeno">{formatarMes(orcamento.mes_referencia)}. Emitido em {formatarDataHora(pis[0]?.created_at)}.</p>
       </div>

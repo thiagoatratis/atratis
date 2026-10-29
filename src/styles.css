@@ -635,3 +635,51 @@ a.celula-titulo:hover { text-decoration: underline; text-underline-offset: 3px; 
   .grade-link { grid-template-columns: 1fr; }
   .previa-link { position: static; }
 }
+
+/* Histórico de alterações do orçamento */
+.historico-orcamento { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--linha); border-radius: var(--raio-sm); background: var(--superficie-2); }
+.historico-orcamento h3 { margin: 0 0 8px; font-size: 14px; }
+.historico-orcamento ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.historico-marca { margin-left: 6px; font-size: 11px; }
+
+/* ---------------- E-mail dos P.I.s ---------------- */
+.acoes-topo { display: flex; gap: 8px; flex-wrap: wrap; }
+.pilha-curta { display: flex; flex-direction: column; gap: 10px; }
+.chip svg { width: 14px; height: 14px; vertical-align: -2px; }
+.linha-adicionar { display: flex; gap: 8px; align-items: flex-start; }
+.linha-adicionar .campo { flex: 1; }
+.linha-adicionar > .btn { margin-top: 26px; min-height: 42px; }
+.envios-pi { margin-top: 16px; }
+.titulo-sub { font-size: 14px; font-weight: 700; margin: 0 0 8px; }
+.envios-pi ul { list-style: none; margin: 0; padding: 0; font-size: 13.5px; }
+.envios-pi li { padding: 6px 0; border-top: 1px solid var(--linha); overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .linha-adicionar { flex-direction: column; align-items: stretch; }
+  .linha-adicionar > .btn { margin-top: 0; }
+}
+
+/* ---------------- Orçamento por projeto (Projetos × Objetivo × Mídias) ---------------- */
+.tabela-projetos thead th { background: var(--tinta); color: #fff; font-size: 12.5px; }
+.tabela-projetos .celula-projeto {
+  background: var(--superficie-2); color: var(--tinta); font-weight: 700; font-size: 14px; text-align: center;
+  vertical-align: middle; white-space: normal; min-width: 120px; max-width: 200px; border-right: 1px solid var(--linha);
+}
+.tabela-projetos tr.inicio-projeto > * { border-top: 2px solid var(--linha-forte); }
+.tabela-projetos tbody tr:first-child > * { border-top: 0; }
+.tabela-projetos .celula-objetivo { text-align: center; vertical-align: middle; border-left: 1px solid var(--linha); border-right: 1px solid var(--linha); }
+.tabela-projetos .col-numero { width: 44px; padding-left: 8px; padding-right: 8px; text-align: center; }
+.numero-canal {
+  display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 6px;
+  background: var(--marca); color: #fff; font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.tabela-projetos tbody td { border-bottom: 1px solid var(--linha); }
+.tabela-projetos tfoot th { background: var(--tinta); color: #fff; text-align: right; }
+.tabela-projetos tfoot td { background: var(--tinta); color: #fff; }
+.tabela-projetos tfoot td strong { color: #fff; }
+.tabela-projetos th.centro { text-align: center; }
+.tabela-projetos .celula-canal { white-space: nowrap; }
+@media (max-width: 560px) {
+  .tabela-projetos th, .tabela-projetos td { padding: 9px 10px; font-size: 13px; }
+  .tabela-projetos .celula-projeto { min-width: 88px; font-size: 13px; }
+  .tabela-projetos .col-numero { width: 36px; padding-left: 4px; padding-right: 4px; }
+}

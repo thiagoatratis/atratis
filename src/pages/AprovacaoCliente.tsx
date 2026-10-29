@@ -7,11 +7,12 @@ import {
 } from "../lib/criativos";
 import { useAuth } from "../lib/auth";
 import { Link } from "../lib/router";
-import { formatarData, formatarDataHora } from "../lib/format";
+import { formatarData } from "../lib/format";
 import { AvisoErro, Botao, CampoTexto, Carregando, Modal, Selo, Vazio, useAviso } from "../components/ui";
 import { Previa } from "../components/Previa";
 import { Conversa } from "../components/Conversa";
 import { STATUS_SOLICITACAO, STATUS_VERSAO, type Decisao, type Peca, type Versao } from "../types";
+import { autoriaDecisao, observacaoReuniao } from "../lib/reuniao";
 
 export function AprovacaoCliente({ id }: { id: string }) {
   const { perfil } = useAuth();
@@ -203,8 +204,8 @@ function PecaCliente({ peca, decisoes, podeDecidir, onDecidido }: {
       )}
       {minha && (
         <p className={minha.decisao === "aprovado" ? "decisao-ok" : "decisao-alt"}>
-          {minha.decisao === "aprovado" ? "Aprovada" : "Alteração pedida"} por {minha.user_nome || minha.user_email} em {formatarDataHora(minha.created_at)}
-          {minha.comentario ? `: "${minha.comentario}"` : "."}
+          {minha.decisao === "aprovado" ? "Aprovada" : "Alteração pedida"} {autoriaDecisao(minha)}
+          {minha.comentario ? `: "${minha.comentario}"` : "."}{observacaoReuniao(minha)}
         </p>
       )}
       {anteriores.length > 0 && (
@@ -216,7 +217,7 @@ function PecaCliente({ peca, decisoes, podeDecidir, onDecidido }: {
               return (
                 <li key={v.id}>
                   <strong>Versão {v.numero}</strong>
-                  {d ? ` ${d.decisao === "aprovado" ? "aprovada" : "com alteração pedida"} em ${formatarDataHora(d.created_at)}${d.comentario ? `: "${d.comentario}"` : ""}` : " sem decisão"}
+                  {d ? ` ${d.decisao === "aprovado" ? "aprovada" : "com alteração pedida"} ${autoriaDecisao(d)}${d.comentario ? `: "${d.comentario}"` : ""}` : " sem decisão"}
                 </li>
               );
             })}

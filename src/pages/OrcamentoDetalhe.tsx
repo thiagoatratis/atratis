@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { LuArrowLeft, LuCopyPlus, LuLink, LuPencil, LuPlus, LuSend } from "react-icons/lu";
+import { LuArrowLeft, LuCopyPlus, LuHandshake, LuLink, LuPencil, LuPlus, LuSend } from "react-icons/lu";
 import { useAsync } from "../lib/useAsync";
 import { listarClientes, listarUsuarios } from "../lib/api";
 import { listarCampanhas } from "../lib/criativos";
 import {
-  adicionarLinha, atualizarLinha, cancelarOrcamento, enviarOrcamento, excluirLinha, listarDecisoesOrcamento,
-  listarVersoes, novaVersaoOrcamento, obterObservacoesOrcamento, obterOrcamento, salvarObservacoesOrcamento,
+  adicionarLinha, aprovarOrcamentoEmReuniao, atualizarLinha, cancelarOrcamento, enviarOrcamento, excluirLinha, listarAlteracoesOrcamento, listarDecisoesOrcamento,
+  listarVersoes, novaVersaoOrcamento, obterObservacoesOrcamento, obterOrcamento, projetosDoOrcamento, salvarObservacoesOrcamento,
   tituloOrcamento, totais, type CamposLinha,
 } from "../lib/orcamentos";
 import {
@@ -20,21 +20,25 @@ import {
 import { AvisarCliente } from "../components/AvisarCliente";
 import { TabelaOrcamento } from "../components/TabelaOrcamento";
 import { PedidosInsercao } from "../components/PedidosInsercao";
+import { HistoricoOrcamento } from "../components/HistoricoOrcamento";
 import { OrcamentoFormulario } from "./OrcamentoFormulario";
 import {
   STATUS_ORCAMENTO, STATUS_VERSAO_ORCAMENTO, type DecisaoOrcamento, type LinhaOrcamento, type Orcamento,
 } from "../types";
+import { autoriaDecisao, observacaoReuniao } from "../lib/reuniao";
+import { AprovarEmReuniao } from "../components/AprovarEmReuniao";
 
 export function OrcamentoDetalhe({ id }: { id: string }) {
   const avisar = useAviso();
   const dados = useAsync(async () => {
     const o = await obterOrcamento(id);
     if (!o) return null;
-    const [versoes, decisoes, clientes, usuarios, campanhas] = await Promise.all([
+    const [versoes, decisoes, clientes, usuarios, campanhas, alteracoes] = await Promise.all([
       listarVersoes(id), listarDecisoesOrcamento(id), listarClientes(), listarUsuarios(), listarCampanhas(o.client_id),
+      listarAlteracoesOrcamento(id),
     ]);
     return {
-      o, versoes, decisoes,
+      o, versoes, decisoes, alteracoes,
       cliente: clientes.find((c) => c.id === o.client_id),
       responsavel: usuarios.find((u) => u.id === o.responsavel_id),
       campanha: campanhas.find((c) => c.id === o.campaign_id),
@@ -48,6 +52,7 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
   const [cancelando, setCancelando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [avisarCliente, setAvisarCliente] = useState(false);
+  const [reuniao, setReuniao] = useState(false);
 
   const atualId = dados.data?.versoes.at(-1)?.id;
   useEffect(() => setVerId(atualId), [atualId]);
@@ -59,13 +64,23 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
       Ele pode ter sido removido ou você não tem acesso ao cliente.
     </Vazio>;
   }
-  const { o, versoes, decisoes, cliente, responsavel, campanha } = dados.data;
+  const { o, versoes, decisoes, alteracoes, cliente, responsavel, campanha } = dados.data;
   const st = STATUS_ORCAMENTO[o.status];
   const editavel = o.status !== "cancelado";
   const atual = versoes[versoes.length - 1];
   const vista = versoes.find((v) => v.id === verId) ?? atual;
-  const rascunho = editavel && vista?.id === atual?.id && atual?.status === "rascunho";
-  const podeEnviar = editavel && atual?.status === "rascunho" && atual.linhas.length > 0;
+  // Desde 29/10/2026 os valores da versão atual mudam mesmo depois de enviada; cada mudança vai para o histórico.
+  const rascunho = editavel && vista?.id === atual?.id && atual?.status !== "substituida";
+  const enviada = atual?.status !== "rascunho";
+  const reenviar = atual?.status === "alteracoes_solicitadas";
+  const podeEnviar = editavel && (atual?.status === "rascunho" || reenviar) && (atual?.linhas.length ?? 0) > 0;
+  const podeAprovarEmReuniao = editavel && (atual?.linhas.length ?? 0) > 0
+    && (atual?.status === "rascunho" || atual?.status === "pendente" || reenviar);
+
+  // Mudança em orçamento já aprovado: continua aprovado, mas o P.I. emitido não muda.
+  const confirmarSeAprovado = () => atual?.status !== "aprovado" || window.confirm(
+    "Este orçamento já foi aprovado. A mudança fica no histórico (que o cliente também vê) e ele continua aprovado.\n\n"
+    + "P.I. já emitido não muda: se precisar, cancele e emita de novo.");
   const decisoesDaVista = decisoes.filter((d) => d.version_id === vista?.id);
 
   async function enviar() {
@@ -83,7 +98,8 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
   }
 
   async function excluir(l: LinhaOrcamento) {
-    if (!window.confirm(`Excluir a linha ${l.plataforma}${l.descricao ? ` (${l.descricao})` : ""}?`)) return;
+    if (!window.confirm(`Excluir a linha ${l.plataforma}${l.descricao ? ` (${l.descricao})` : ""}?${enviada ? " A remoção fica no histórico que o cliente vê." : ""}`)) return;
+    if (!confirmarSeAprovado()) return;
     try {
       await excluirLinha(l.id);
       await dados.reload();
@@ -103,13 +119,15 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
           <>
             <Botao onClick={() => setEditando(true)}><LuPencil /> Editar dados</Botao>
             {o.enviado_em && <Botao onClick={() => setAvisarCliente(true)}><LuLink /> Link para o cliente</Botao>}
-            {atual?.status === "rascunho" ? (
+            {podeAprovarEmReuniao && <Botao onClick={() => setReuniao(true)}><LuHandshake /> Aprovado em reunião</Botao>}
+            {atual?.status !== "rascunho" && (
+              <Botao onClick={() => setNovaVersao(true)}><LuCopyPlus /> Nova versão</Botao>
+            )}
+            {(atual?.status === "rascunho" || reenviar) && (
               <Botao variante="primario" disabled={!podeEnviar} carregando={enviando} onClick={() => void enviar()}
                 title={podeEnviar ? undefined : "Adicione pelo menos uma linha para enviar."}>
                 <LuSend /> {o.enviado_em ? "Reenviar ao cliente" : "Enviar ao cliente"}
               </Botao>
-            ) : (
-              <Botao variante="primario" onClick={() => setNovaVersao(true)}><LuCopyPlus /> Nova versão</Botao>
             )}
           </>
         )}
@@ -120,12 +138,12 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
       )}
       {o.status === "alteracoes_solicitadas" && (
         <div className="aviso aviso-erro">
-          <p>O cliente pediu alterações{decisoes.at(-1)?.comentario ? `: "${decisoes.at(-1)!.comentario}"` : "."} Crie uma versão nova com os ajustes e reenvie.</p>
+          <p>O cliente pediu alterações{decisoes.at(-1)?.comentario ? `: "${decisoes.at(-1)!.comentario}"` : "."} Ajuste os valores aqui e clique em Reenviar ao cliente.</p>
         </div>
       )}
       {(o.status === "aguardando_aprovacao" || o.status === "em_analise") && (
         <div className="aviso aviso-info">
-          <p>A versão {atual?.numero} está com o cliente. Para mudar valores agora, crie uma versão nova: a que está com ele fica substituída e o envio novo precisa de aprovação.</p>
+          <p>O orçamento está com o cliente. Você pode ajustar os valores aqui: ele vê os valores novos na hora, com o histórico do que mudou.</p>
         </div>
       )}
 
@@ -169,6 +187,7 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
           )}
 
           {decisoesDaVista.length > 0 && <ListaDecisoes decisoes={decisoesDaVista} />}
+          <HistoricoOrcamento alteracoes={alteracoes} versoes={versoes} />
         </section>
         <PedidosInsercao orcamento={o} versao={atual} cliente={cliente} campanha={campanha?.nome} equipe />
         </div>
@@ -194,13 +213,24 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
       <OrcamentoFormulario aberto={editando} orcamento={o} onFechar={() => setEditando(false)}
         onSalvo={() => { setEditando(false); avisar("Dados salvos."); void dados.reload(); }} />
       {atual && (
-        <LinhaFormulario linha={linha} versionId={atual.id} ordem={atual.linhas.length + 1} onFechar={() => setLinha(null)}
+        <LinhaFormulario linha={linha} versionId={atual.id} ordem={Math.max(0, ...atual.linhas.map((l) => l.ordem)) + 1}
+          projetos={projetosDoOrcamento(atual.linhas)} onFechar={() => setLinha(null)}
+          antesDeSalvar={confirmarSeAprovado}
           onPronto={() => { setLinha(null); void dados.reload(); }} />
       )}
       <NovaVersao aberto={novaVersao} orcamento={o} onFechar={() => setNovaVersao(false)}
         onPronto={() => { setNovaVersao(false); avisar("Versão nova criada. Ajuste os valores e reenvie."); void dados.reload(); }} />
       <Cancelar aberto={cancelando} budgetId={o.id} onFechar={() => setCancelando(false)}
         onPronto={() => { setCancelando(false); avisar("Orçamento cancelado."); void dados.reload(); }} />
+      <AprovarEmReuniao aberto={reuniao} onFechar={() => setReuniao(false)}
+        oQue={<>o orçamento <strong>{tituloOrcamento(o)}</strong> ({formatarMoeda(totais(atual?.linhas ?? []).valor)})</>}
+        aviso={atual?.status === "rascunho" ? "O orçamento ainda não foi enviado: ele fica enviado e aprovado ao mesmo tempo." : undefined}
+        onConfirmar={async (quando, quem, obs) => {
+          await aprovarOrcamentoEmReuniao(o.id, quando, quem, obs);
+          setReuniao(false);
+          avisar("Aprovação em reunião registrada. Agora é só emitir os P.I.s logo abaixo dos valores.");
+          await dados.reload();
+        }} />
       <AvisarCliente aberto={avisarCliente} onFechar={() => setAvisarCliente(false)}
         caminho={`/orcamentos/${o.id}`} clientId={o.client_id}
         mensagem={(link, pessoal) => mensagemOrcamento(o, totais(atual?.linhas ?? []).valor, link, pessoal)} />
@@ -225,8 +255,8 @@ export function ListaDecisoes({ decisoes }: { decisoes: DecisaoOrcamento[] }) {
     <ul className="decisoes-orcamento">
       {decisoes.map((d) => (
         <li key={d.id} className={d.decisao === "aprovado" ? "decisao-ok" : "decisao-alt"}>
-          {d.decisao === "aprovado" ? "Aprovado" : "Alteração pedida"} por {d.user_nome || d.user_email} em {formatarDataHora(d.created_at)}
-          {" "}(total {formatarMoeda(d.total)}){d.comentario ? `: "${d.comentario}"` : "."}
+          {d.decisao === "aprovado" ? "Aprovado" : "Alteração pedida"} {autoriaDecisao(d)}
+          {" "}(total {formatarMoeda(d.total)}){d.comentario ? `: "${d.comentario}"` : "."}{observacaoReuniao(d)}
         </li>
       ))}
     </ul>
@@ -235,13 +265,15 @@ export function ListaDecisoes({ decisoes }: { decisoes: DecisaoOrcamento[] }) {
 
 // ------------------------------------------------------------------
 
-function LinhaFormulario({ linha, versionId, ordem, onFechar, onPronto }: {
-  linha: LinhaOrcamento | "nova" | null; versionId: string; ordem: number; onFechar: () => void; onPronto: () => void;
+function LinhaFormulario({ linha, versionId, ordem, projetos, onFechar, onPronto, antesDeSalvar }: {
+  linha: LinhaOrcamento | "nova" | null; versionId: string; ordem: number; projetos: string[]; onFechar: () => void; onPronto: () => void;
+  antesDeSalvar?: () => boolean;
 }) {
   const aberto = linha !== null;
   const existente = linha && linha !== "nova" ? linha : null;
   const [plataforma, setPlataforma] = useState(PLATAFORMAS[0]);
   const [outra, setOutra] = useState("");
+  const [projeto, setProjeto] = useState("");
   const [descricao, setDescricao] = useState("");
   const [valor, setValor] = useState("");
   const [erro, setErro] = useState<string | null>(null);
@@ -252,10 +284,11 @@ function LinhaFormulario({ linha, versionId, ordem, onFechar, onPronto }: {
     const conhecida = existente ? PLATAFORMAS.includes(existente.plataforma) : true;
     setPlataforma(existente ? (conhecida ? existente.plataforma : OUTRA_PLATAFORMA) : PLATAFORMAS[0]);
     setOutra(existente && !conhecida ? existente.plataforma : "");
+    setProjeto(existente ? existente.projeto ?? "" : projetos.at(-1) ?? "");
     setDescricao(existente?.descricao ?? "");
     setValor(existente ? moedaParaCampo(existente.valor) : "");
     setErro(null);
-  }, [aberto, existente]);
+  }, [aberto, existente]); // projetos: só na abertura
 
   const nome = plataforma === OUTRA_PLATAFORMA ? outra.trim() : plataforma;
   const numero = lerMoeda(valor);
@@ -265,9 +298,10 @@ function LinhaFormulario({ linha, versionId, ordem, onFechar, onPronto }: {
   async function salvar(e: FormEvent) {
     e.preventDefault();
     setErro(null);
-    if (!nome) return setErro("Digite o nome da plataforma.");
+    if (!nome) return setErro("Digite o nome do canal.");
     if (!numero || numero <= 0) return setErro("Digite o valor do boleto, por exemplo 1.100,00.");
-    const campos: CamposLinha = { plataforma: nome, descricao: descricao.trim() || null, valor: numero };
+    const campos: CamposLinha = { projeto: projeto.trim() || null, plataforma: nome, descricao: descricao.trim() || null, valor: numero };
+    if (antesDeSalvar && !antesDeSalvar()) return;
     setSalvando(true);
     try {
       if (existente) await atualizarLinha(existente.id, campos);
@@ -288,16 +322,21 @@ function LinhaFormulario({ linha, versionId, ordem, onFechar, onPronto }: {
       </>}>
       <form id="form-linha" onSubmit={salvar} noValidate className="pilha">
         {erro && <div className="aviso aviso-erro" role="alert"><p>{erro}</p></div>}
-        <CampoSelecao rotulo="Plataforma" value={plataforma} onChange={(e) => setPlataforma(e.target.value)}>
+        <Campo rotulo="Projeto" value={projeto} onChange={(e) => setProjeto(e.target.value)} list="projetos-orcamento" maxLength={80}
+          placeholder="Ex.: Institucional, Revista, Ebook Energia"
+          ajuda={projetos.length ? "Escolha um projeto da lista ou digite um novo. As linhas do mesmo projeto ficam juntas na tabela." : "As linhas do mesmo projeto ficam juntas na tabela."} />
+        <datalist id="projetos-orcamento">{projetos.map((p) => <option key={p} value={p} />)}</datalist>
+        <CampoSelecao rotulo="Canal" value={plataforma} onChange={(e) => setPlataforma(e.target.value)}>
           {PLATAFORMAS.map((p) => <option key={p} value={p}>{p}</option>)}
           <option value={OUTRA_PLATAFORMA}>Outra</option>
         </CampoSelecao>
         {plataforma === OUTRA_PLATAFORMA && (
-          <Campo rotulo="Nome da plataforma" value={outra} onChange={(e) => setOutra(e.target.value)} autoFocus />
+          <Campo rotulo="Nome do canal" value={outra} onChange={(e) => setOutra(e.target.value)} autoFocus />
         )}
-        <Campo rotulo="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)}
-          placeholder="Ex.: Leads, Remarketing" ajuda="Opcional. Use para separar mais de uma linha da mesma plataforma." maxLength={200} />
-        <Campo rotulo="Valor do boleto (R$)" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)}
+        <Campo rotulo="Objetivo" value={descricao} onChange={(e) => setDescricao(e.target.value)}
+          placeholder="Ex.: Impulsionamento, Branding, HR | Comercial" maxLength={200}
+          ajuda="Linhas seguidas do mesmo projeto com o mesmo objetivo ficam agrupadas na tabela." />
+        <Campo rotulo="Verba fixa mensal (R$)" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)}
           placeholder="1.100,00" erro={valor && numero === null ? "Use o formato 1.100,00." : null}
           ajuda={aliquota > 0 ? `Valor total que o cliente paga. O imposto do ${nome} (${formatarAliquota(aliquota)}) já está incluso.` : "Valor total que o cliente paga."} />
         {conta && (
