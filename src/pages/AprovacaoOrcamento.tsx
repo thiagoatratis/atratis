@@ -4,7 +4,7 @@ import { useAsync } from "../lib/useAsync";
 import { listarClientes, listarVinculos } from "../lib/api";
 import { listarCampanhas } from "../lib/criativos";
 import {
-  decidirOrcamento, listarDecisoesOrcamento, listarVersoes, obterOrcamento, registrarVisualizacaoOrcamento,
+  decidirOrcamento, listarAlteracoesOrcamento, listarDecisoesOrcamento, listarVersoes, obterOrcamento, registrarVisualizacaoOrcamento,
   tituloOrcamento, totais,
 } from "../lib/orcamentos";
 import { formatarMes, formatarMoeda } from "../lib/dinheiro";
@@ -14,6 +14,7 @@ import { formatarData, formatarDataHora } from "../lib/format";
 import { AvisoErro, Botao, CampoTexto, Carregando, Modal, Selo, Vazio, useAviso } from "../components/ui";
 import { TabelaOrcamento } from "../components/TabelaOrcamento";
 import { PedidosInsercao } from "../components/PedidosInsercao";
+import { HistoricoOrcamento, ultimaAlteracao } from "../components/HistoricoOrcamento";
 import { STATUS_ORCAMENTO, STATUS_VERSAO_ORCAMENTO } from "../types";
 
 export function AprovacaoOrcamento({ id }: { id: string }) {
@@ -29,12 +30,13 @@ export function AprovacaoOrcamento({ id }: { id: string }) {
     if (!registrado) return undefined;
     const o = await obterOrcamento(id);
     if (!o) return null;
-    const [versoes, decisoes, empresas, vinculos, campanhas] = await Promise.all([
+    const [versoes, decisoes, empresas, vinculos, campanhas, alteracoes] = await Promise.all([
       listarVersoes(id), listarDecisoesOrcamento(id), listarClientes(), listarVinculos(), listarCampanhas(o.client_id),
+      listarAlteracoesOrcamento(id),
     ]);
     const meu = vinculos.find((v) => v.user_id === perfil?.id && v.client_id === o.client_id);
     return {
-      o, versoes, decisoes,
+      o, versoes, decisoes, alteracoes,
       empresa: empresas.find((c) => c.id === o.client_id),
       campanha: campanhas.find((c) => c.id === o.campaign_id),
       podeAprovar: !!meu?.pode_aprovar && !!meu.ativo,
@@ -54,7 +56,7 @@ export function AprovacaoOrcamento({ id }: { id: string }) {
       O endereço pode estar errado ou você não tem acesso a esta empresa.
     </Vazio>;
   }
-  const { o, versoes, decisoes, empresa, campanha, podeAprovar } = dados.data;
+  const { o, versoes, decisoes, alteracoes, empresa, campanha, podeAprovar } = dados.data;
   const st = STATUS_ORCAMENTO[o.status];
   // o cliente só recebe versões já enviadas; a última é a que vale
   const atual = versoes[versoes.length - 1];
@@ -62,7 +64,8 @@ export function AprovacaoOrcamento({ id }: { id: string }) {
   const aberto = (o.status === "aguardando_aprovacao" || o.status === "em_analise") && atual?.status === "pendente";
   const t = totais(atual?.linhas ?? []);
   const decisao = (versionId: string) => decisoes.filter((d) => d.version_id === versionId).at(-1);
-  const minha = atual ? decisao(atual.id) : undefined;
+  // Depois de um reenvio, a decisão anterior fica só no histórico de versões.
+  const minha = atual ? decisoes.filter((d) => d.version_id === atual.id && d.created_at >= (atual.enviado_em ?? "")).at(-1) : undefined;
 
   async function decidir(tipo: "aprovado" | "alteracoes_solicitadas") {
     if (tipo === "alteracoes_solicitadas" && texto.trim().length < 3) return setErro("Conte o que precisa ser ajustado.");
@@ -117,7 +120,16 @@ export function AprovacaoOrcamento({ id }: { id: string }) {
             <Selo tom={STATUS_VERSAO_ORCAMENTO[atual.status].tom}>{STATUS_VERSAO_ORCAMENTO[atual.status].rotulo}</Selo>
           </div>
           {atual.observacao && <p className="peca-novidade">O que mudou nesta versão: {atual.observacao}</p>}
+          {(() => {
+            const ultima = ultimaAlteracao(alteracoes, atual);
+            return ultima ? (
+              <div className="aviso aviso-atencao">
+                <p>A Atratis atualizou os valores em {formatarDataHora(ultima.created_at)}. Veja o que mudou no histórico logo abaixo da tabela.</p>
+              </div>
+            ) : null;
+          })()}
           <TabelaOrcamento linhas={atual.linhas} />
+          <HistoricoOrcamento alteracoes={alteracoes} versoes={versoes} />
           <p className="suave pequeno">
             O valor de cada linha é o total a pagar. No Meta Ads, o imposto de 12,15% já está incluso nesse valor.
           </p>

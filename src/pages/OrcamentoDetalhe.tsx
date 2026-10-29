@@ -4,7 +4,7 @@ import { useAsync } from "../lib/useAsync";
 import { listarClientes, listarUsuarios } from "../lib/api";
 import { listarCampanhas } from "../lib/criativos";
 import {
-  adicionarLinha, atualizarLinha, cancelarOrcamento, enviarOrcamento, excluirLinha, listarDecisoesOrcamento,
+  adicionarLinha, atualizarLinha, cancelarOrcamento, enviarOrcamento, excluirLinha, listarAlteracoesOrcamento, listarDecisoesOrcamento,
   listarVersoes, novaVersaoOrcamento, obterObservacoesOrcamento, obterOrcamento, salvarObservacoesOrcamento,
   tituloOrcamento, totais, type CamposLinha,
 } from "../lib/orcamentos";
@@ -20,6 +20,7 @@ import {
 import { AvisarCliente } from "../components/AvisarCliente";
 import { TabelaOrcamento } from "../components/TabelaOrcamento";
 import { PedidosInsercao } from "../components/PedidosInsercao";
+import { HistoricoOrcamento } from "../components/HistoricoOrcamento";
 import { OrcamentoFormulario } from "./OrcamentoFormulario";
 import {
   STATUS_ORCAMENTO, STATUS_VERSAO_ORCAMENTO, type DecisaoOrcamento, type LinhaOrcamento, type Orcamento,
@@ -30,11 +31,12 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
   const dados = useAsync(async () => {
     const o = await obterOrcamento(id);
     if (!o) return null;
-    const [versoes, decisoes, clientes, usuarios, campanhas] = await Promise.all([
+    const [versoes, decisoes, clientes, usuarios, campanhas, alteracoes] = await Promise.all([
       listarVersoes(id), listarDecisoesOrcamento(id), listarClientes(), listarUsuarios(), listarCampanhas(o.client_id),
+      listarAlteracoesOrcamento(id),
     ]);
     return {
-      o, versoes, decisoes,
+      o, versoes, decisoes, alteracoes,
       cliente: clientes.find((c) => c.id === o.client_id),
       responsavel: usuarios.find((u) => u.id === o.responsavel_id),
       campanha: campanhas.find((c) => c.id === o.campaign_id),
@@ -59,13 +61,21 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
       Ele pode ter sido removido ou você não tem acesso ao cliente.
     </Vazio>;
   }
-  const { o, versoes, decisoes, cliente, responsavel, campanha } = dados.data;
+  const { o, versoes, decisoes, alteracoes, cliente, responsavel, campanha } = dados.data;
   const st = STATUS_ORCAMENTO[o.status];
   const editavel = o.status !== "cancelado";
   const atual = versoes[versoes.length - 1];
   const vista = versoes.find((v) => v.id === verId) ?? atual;
-  const rascunho = editavel && vista?.id === atual?.id && atual?.status === "rascunho";
-  const podeEnviar = editavel && atual?.status === "rascunho" && atual.linhas.length > 0;
+  // Desde 29/10/2026 os valores da versão atual mudam mesmo depois de enviada; cada mudança vai para o histórico.
+  const rascunho = editavel && vista?.id === atual?.id && atual?.status !== "substituida";
+  const enviada = atual?.status !== "rascunho";
+  const reenviar = atual?.status === "alteracoes_solicitadas";
+  const podeEnviar = editavel && (atual?.status === "rascunho" || reenviar) && (atual?.linhas.length ?? 0) > 0;
+
+  // Mudança em orçamento já aprovado: continua aprovado, mas o P.I. emitido não muda.
+  const confirmarSeAprovado = () => atual?.status !== "aprovado" || window.confirm(
+    "Este orçamento já foi aprovado. A mudança fica no histórico (que o cliente também vê) e ele continua aprovado.\n\n"
+    + "P.I. já emitido não muda: se precisar, cancele e emita de novo.");
   const decisoesDaVista = decisoes.filter((d) => d.version_id === vista?.id);
 
   async function enviar() {
@@ -83,7 +93,8 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
   }
 
   async function excluir(l: LinhaOrcamento) {
-    if (!window.confirm(`Excluir a linha ${l.plataforma}${l.descricao ? ` (${l.descricao})` : ""}?`)) return;
+    if (!window.confirm(`Excluir a linha ${l.plataforma}${l.descricao ? ` (${l.descricao})` : ""}?${enviada ? " A remoção fica no histórico que o cliente vê." : ""}`)) return;
+    if (!confirmarSeAprovado()) return;
     try {
       await excluirLinha(l.id);
       await dados.reload();
@@ -103,13 +114,14 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
           <>
             <Botao onClick={() => setEditando(true)}><LuPencil /> Editar dados</Botao>
             {o.enviado_em && <Botao onClick={() => setAvisarCliente(true)}><LuLink /> Link para o cliente</Botao>}
-            {atual?.status === "rascunho" ? (
+            {atual?.status !== "rascunho" && (
+              <Botao onClick={() => setNovaVersao(true)}><LuCopyPlus /> Nova versão</Botao>
+            )}
+            {(atual?.status === "rascunho" || reenviar) && (
               <Botao variante="primario" disabled={!podeEnviar} carregando={enviando} onClick={() => void enviar()}
                 title={podeEnviar ? undefined : "Adicione pelo menos uma linha para enviar."}>
                 <LuSend /> {o.enviado_em ? "Reenviar ao cliente" : "Enviar ao cliente"}
               </Botao>
-            ) : (
-              <Botao variante="primario" onClick={() => setNovaVersao(true)}><LuCopyPlus /> Nova versão</Botao>
             )}
           </>
         )}
@@ -120,12 +132,12 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
       )}
       {o.status === "alteracoes_solicitadas" && (
         <div className="aviso aviso-erro">
-          <p>O cliente pediu alterações{decisoes.at(-1)?.comentario ? `: "${decisoes.at(-1)!.comentario}"` : "."} Crie uma versão nova com os ajustes e reenvie.</p>
+          <p>O cliente pediu alterações{decisoes.at(-1)?.comentario ? `: "${decisoes.at(-1)!.comentario}"` : "."} Ajuste os valores aqui e clique em Reenviar ao cliente.</p>
         </div>
       )}
       {(o.status === "aguardando_aprovacao" || o.status === "em_analise") && (
         <div className="aviso aviso-info">
-          <p>A versão {atual?.numero} está com o cliente. Para mudar valores agora, crie uma versão nova: a que está com ele fica substituída e o envio novo precisa de aprovação.</p>
+          <p>O orçamento está com o cliente. Você pode ajustar os valores aqui: ele vê os valores novos na hora, com o histórico do que mudou.</p>
         </div>
       )}
 
@@ -169,6 +181,7 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
           )}
 
           {decisoesDaVista.length > 0 && <ListaDecisoes decisoes={decisoesDaVista} />}
+          <HistoricoOrcamento alteracoes={alteracoes} versoes={versoes} />
         </section>
         <PedidosInsercao orcamento={o} versao={atual} cliente={cliente} campanha={campanha?.nome} equipe />
         </div>
@@ -195,6 +208,7 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
         onSalvo={() => { setEditando(false); avisar("Dados salvos."); void dados.reload(); }} />
       {atual && (
         <LinhaFormulario linha={linha} versionId={atual.id} ordem={atual.linhas.length + 1} onFechar={() => setLinha(null)}
+          antesDeSalvar={confirmarSeAprovado}
           onPronto={() => { setLinha(null); void dados.reload(); }} />
       )}
       <NovaVersao aberto={novaVersao} orcamento={o} onFechar={() => setNovaVersao(false)}
@@ -235,8 +249,9 @@ export function ListaDecisoes({ decisoes }: { decisoes: DecisaoOrcamento[] }) {
 
 // ------------------------------------------------------------------
 
-function LinhaFormulario({ linha, versionId, ordem, onFechar, onPronto }: {
+function LinhaFormulario({ linha, versionId, ordem, onFechar, onPronto, antesDeSalvar }: {
   linha: LinhaOrcamento | "nova" | null; versionId: string; ordem: number; onFechar: () => void; onPronto: () => void;
+  antesDeSalvar?: () => boolean;
 }) {
   const aberto = linha !== null;
   const existente = linha && linha !== "nova" ? linha : null;
@@ -268,6 +283,7 @@ function LinhaFormulario({ linha, versionId, ordem, onFechar, onPronto }: {
     if (!nome) return setErro("Digite o nome da plataforma.");
     if (!numero || numero <= 0) return setErro("Digite o valor do boleto, por exemplo 1.100,00.");
     const campos: CamposLinha = { plataforma: nome, descricao: descricao.trim() || null, valor: numero };
+    if (antesDeSalvar && !antesDeSalvar()) return;
     setSalvando(true);
     try {
       if (existente) await atualizarLinha(existente.id, campos);

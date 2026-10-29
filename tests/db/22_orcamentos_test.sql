@@ -114,20 +114,11 @@ select tests.ok((select status = 'pendente' and enviado_em is not null from publ
                  where budget_id = '20000000-0000-0000-0000-000000000001' and numero = 1),
   'versão enviada fica pendente com data de envio');
 
-do $$ begin
-  update public.budget_lines set valor = 900 where id = '20000000-0000-0000-0000-0000000000a1';
-  raise exception 'FALHOU: alterou valor de versão enviada' using errcode = 'TF001';
-exception when insufficient_privilege then raise notice 'ok  valor de versão enviada não muda';
-end $$;
-do $$ begin
-  delete from public.budget_lines where id = '20000000-0000-0000-0000-0000000000a2';
-  raise exception 'FALHOU: apagou linha de versão enviada' using errcode = 'TF001';
-exception when insufficient_privilege then raise notice 'ok  linha de versão enviada não é apagada';
-end $$;
+-- Desde 29/10/2026 a versão enviada pode mudar (migration 011, testes em 26_orcamento_edicao_test.sql).
 do $$ begin
   perform public.enviar_orcamento('20000000-0000-0000-0000-000000000001');
-  raise exception 'FALHOU: reenviou sem versão nova' using errcode = 'TF001';
-exception when raise_exception then raise notice 'ok  não reenvia a mesma versão';
+  raise exception 'FALHOU: reenviou orçamento que já está com o cliente' using errcode = 'TF001';
+exception when raise_exception then raise notice 'ok  não reenvia o que já está com o cliente';
 end $$;
 reset role;
 

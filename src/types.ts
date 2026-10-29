@@ -423,3 +423,21 @@ export interface DecisaoSecaoPlano {
   user_nome: string | null;
   created_at: string;
 }
+
+/** Mudança nos valores de um orçamento depois de enviado (histórico visível à equipe e ao cliente). */
+export interface AlteracaoOrcamento {
+  id: number;
+  budget_id: string;
+  version_id: string;
+  acao: "incluida" | "alterada" | "removida";
+  plataforma: string;
+  descricao: string | null;
+  plataforma_antes: string | null;
+  descricao_antes: string | null;
+  valor_antes: number | null;
+  valor_depois: number | null;
+  status_orcamento: StatusOrcamento;
+  user_nome: string | null;
+  user_email: string | null;
+  created_at: string;
+}

@@ -5,7 +5,7 @@ import { ErroApp } from "./api";
 import { erro } from "./criativos";
 import { formatarMes } from "./dinheiro";
 import type {
-  DecisaoOrcamento, LinhaOrcamento, Orcamento, OrcamentoCampos, StatusOrcamento, VersaoOrcamento,
+  AlteracaoOrcamento, DecisaoOrcamento, LinhaOrcamento, Orcamento, OrcamentoCampos, StatusOrcamento, VersaoOrcamento,
 } from "../types";
 
 const numeros = (l: LinhaOrcamento): LinhaOrcamento => ({
@@ -139,6 +139,17 @@ export async function decidirOrcamento(id: string, decisao: "aprovado" | "altera
   });
   erro(error);
   return data as StatusOrcamento;
+}
+
+export async function listarAlteracoesOrcamento(budgetId: string): Promise<AlteracaoOrcamento[]> {
+  const { data, error } = await supabase.from("budget_changes").select("*")
+    .eq("budget_id", budgetId).order("created_at");
+  erro(error);
+  return ((data ?? []) as AlteracaoOrcamento[]).map((a) => ({
+    ...a,
+    valor_antes: a.valor_antes === null ? null : Number(a.valor_antes),
+    valor_depois: a.valor_depois === null ? null : Number(a.valor_depois),
+  }));
 }
 
 export async function listarDecisoesOrcamento(budgetId: string): Promise<DecisaoOrcamento[]> {
