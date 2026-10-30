@@ -4,10 +4,11 @@ import type { AlteracaoOrcamento, VersaoOrcamento } from "../types";
 
 const linha = (plataforma: string, descricao: string | null) => (descricao ? `${plataforma} (${descricao})` : plataforma);
 const noProjeto = (projeto: string | null | undefined) => (projeto ? ` no projeto ${projeto}` : "");
+const noBloco = (bloco: string | null | undefined) => (bloco && bloco !== "Geral" ? ` (bloco ${bloco})` : "");
 
 function frase(a: AlteracaoOrcamento): string {
-  if (a.acao === "incluida") return `incluiu ${linha(a.plataforma, a.descricao)}${noProjeto(a.projeto)}: ${formatarMoeda(a.valor_depois ?? 0)}`;
-  if (a.acao === "removida") return `removeu ${linha(a.plataforma, a.descricao)}${noProjeto(a.projeto)}, que era ${formatarMoeda(a.valor_antes ?? 0)}`;
+  if (a.acao === "incluida") return `incluiu ${linha(a.plataforma, a.descricao)}${noProjeto(a.projeto)}${noBloco(a.bloco)}: ${formatarMoeda(a.valor_depois ?? 0)}`;
+  if (a.acao === "removida") return `removeu ${linha(a.plataforma, a.descricao)}${noProjeto(a.projeto)}${noBloco(a.bloco)}, que era ${formatarMoeda(a.valor_antes ?? 0)}`;
   const nomeAntes = linha(a.plataforma_antes ?? a.plataforma, a.descricao_antes);
   const nomeDepois = linha(a.plataforma, a.descricao);
   const partes: string[] = [];
@@ -15,6 +16,9 @@ function frase(a: AlteracaoOrcamento): string {
   // Registros antigos (antes do campo projeto) vêm sem projeto nos dois lados.
   if ((a.projeto ?? "") !== (a.projeto_antes ?? "")) {
     partes.push(`${partes.length ? "e passou" : `passou ${nomeDepois}`} ${a.projeto_antes ? `do projeto ${a.projeto_antes} ` : ""}para ${a.projeto ? `o projeto ${a.projeto}` : "sem projeto"}`);
+  }
+  if (a.bloco_antes && a.bloco && a.bloco_antes !== a.bloco) {
+    partes.push(`${partes.length ? "e passou" : `passou ${nomeDepois}`} do bloco ${a.bloco_antes} para o bloco ${a.bloco}`);
   }
   if (a.valor_antes !== a.valor_depois) {
     partes.push(`${partes.length ? "e mudou" : `mudou ${nomeDepois}`} de ${formatarMoeda(a.valor_antes ?? 0)} para ${formatarMoeda(a.valor_depois ?? 0)}`);

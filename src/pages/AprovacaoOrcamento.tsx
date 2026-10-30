@@ -4,7 +4,7 @@ import { useAsync } from "../lib/useAsync";
 import { listarClientes, listarVinculos } from "../lib/api";
 import { listarCampanhas } from "../lib/criativos";
 import {
-  decidirOrcamento, listarAlteracoesOrcamento, listarDecisoesOrcamento, listarVersoes, obterOrcamento, registrarVisualizacaoOrcamento,
+  decidirBlocoOrcamento, listarAlteracoesOrcamento, listarDecisoesOrcamento, listarVersoes, obterOrcamento, registrarVisualizacaoOrcamento,
   tituloOrcamento, totais,
 } from "../lib/orcamentos";
 import { formatarMes, formatarMoeda } from "../lib/dinheiro";
@@ -17,6 +17,7 @@ import { PedidosInsercao } from "../components/PedidosInsercao";
 import { HistoricoOrcamento, ultimaAlteracao } from "../components/HistoricoOrcamento";
 import { STATUS_ORCAMENTO, STATUS_VERSAO_ORCAMENTO } from "../types";
 import { autoriaDecisao, observacaoReuniao } from "../lib/reuniao";
+import { BLOCO_PADRAO, blocosDaVersao, mostrarNomesDosBlocos, type BlocoExibido } from "../lib/blocos";
 
 export function AprovacaoOrcamento({ id }: { id: string }) {
   const { perfil } = useAuth();
@@ -44,8 +45,8 @@ export function AprovacaoOrcamento({ id }: { id: string }) {
     };
   }, [id, registrado, perfil?.id]);
 
-  const [pedindo, setPedindo] = useState(false);
-  const [confirmar, setConfirmar] = useState(false);
+  const [pedindo, setPedindo] = useState<string | null>(null);
+  const [confirmar, setConfirmar] = useState<BlocoExibido | null>(null);
   const [texto, setTexto] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -62,34 +63,73 @@ export function AprovacaoOrcamento({ id }: { id: string }) {
   // o cliente só recebe versões já enviadas; a última é a que vale
   const atual = versoes[versoes.length - 1];
   const anteriores = versoes.slice(0, -1).reverse();
-  const aberto = (o.status === "aguardando_aprovacao" || o.status === "em_analise") && atual?.status === "pendente";
-  const t = totais(atual?.linhas ?? []);
+  const aberto = o.status === "aguardando_aprovacao" || o.status === "em_analise";
+  const blocos = atual ? blocosDaVersao(atual.linhas, atual.blocos) : [];
+  const comNomes = mostrarNomesDosBlocos(blocos);
   const decisao = (versionId: string) => decisoes.filter((d) => d.version_id === versionId).at(-1);
-  // Depois de um reenvio, a decisão anterior fica só no histórico de versões.
-  const minha = atual ? decisoes.filter((d) => d.version_id === atual.id && d.created_at >= (atual.enviado_em ?? "")).at(-1) : undefined;
+  // Última decisão do bloco desde que ele foi (re)enviado; antes disso fica só no histórico.
+  const decisaoDoBloco = (b: BlocoExibido) => atual
+    ? decisoes.filter((d) => d.version_id === atual.id && (d.bloco ?? BLOCO_PADRAO) === b.nome
+        && d.created_at >= (b.info?.enviado_em ?? atual.enviado_em ?? "")).at(-1)
+    : undefined;
 
-  async function decidir(tipo: "aprovado" | "alteracoes_solicitadas") {
+  async function decidir(b: BlocoExibido, tipo: "aprovado" | "alteracoes_solicitadas") {
     if (tipo === "alteracoes_solicitadas" && texto.trim().length < 3) return setErro("Conte o que precisa ser ajustado.");
     setOcupado(true);
     setErro(null);
     try {
-      await decidirOrcamento(o.id, tipo, tipo === "alteracoes_solicitadas" ? texto : undefined, t.valor);
-      setPedindo(false);
-      setConfirmar(false);
+      await decidirBlocoOrcamento(o.id, b.nome, tipo, tipo === "alteracoes_solicitadas" ? texto : undefined, b.total.valor);
+      setPedindo(null);
+      setConfirmar(null);
       setTexto("");
-      avisar(tipo === "aprovado" ? "Orçamento aprovado." : "Pedido de alteração enviado à Atratis.");
+      avisar(tipo === "aprovado" ? (comNomes ? `Bloco ${b.nome} aprovado.` : "Orçamento aprovado.") : "Pedido de ajuste enviado à Atratis.");
       await dados.reload();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (tipo === "aprovado") {
         // Valores mudaram enquanto a página estava aberta: mostra os novos antes de aprovar.
-        setConfirmar(false);
+        setConfirmar(null);
         void dados.reload();
         avisar(msg, "erro");
       } else setErro(msg);
     } finally {
       setOcupado(false);
     }
+  }
+
+  function decisaoBloco(b: BlocoExibido) {
+    const minha = decisaoDoBloco(b);
+    const pendente = aberto && b.status === "pendente";
+    if (!pendente && !minha) return null;
+    return (
+      <div className="bloco-decisao">
+        {pendente && !podeAprovar && <span className="suave">Seu acesso é só de visualização. A decisão fica com quem aprova pela empresa.</span>}
+        {pendente && podeAprovar && pedindo !== b.nome && (
+          <>
+            <Botao variante="primario" onClick={() => setConfirmar(b)}>
+              <LuCheck /> {comNomes ? `Aprovar ${b.nome}` : "Aprovar orçamento"} ({formatarMoeda(b.total.valor)})
+            </Botao>
+            <Botao onClick={() => { setPedindo(b.nome); setTexto(""); setErro(null); }}>Pedir ajuste</Botao>
+          </>
+        )}
+        {pendente && podeAprovar && pedindo === b.nome && (
+          <div className="pedido-alteracao">
+            <CampoTexto rotulo={comNomes ? `O que precisa ser ajustado em ${b.nome}?` : "O que precisa ser ajustado?"} rows={3} value={texto} autoFocus
+              onChange={(e) => setTexto(e.target.value)} erro={erro} />
+            <div className="decisao-botoes">
+              <Botao variante="primario" carregando={ocupado} onClick={() => void decidir(b, "alteracoes_solicitadas")}>Enviar pedido de ajuste</Botao>
+              <Botao variante="fantasma" onClick={() => { setPedindo(null); setErro(null); }}>Voltar</Botao>
+            </div>
+          </div>
+        )}
+        {!pendente && minha && (
+          <span className={minha.decisao === "aprovado" ? "decisao-ok" : "decisao-alt"}>
+            {minha.decisao === "aprovado" ? "Aprovado" : "Ajuste pedido"} {autoriaDecisao(minha)}
+            {minha.comentario ? `: "${minha.comentario}"` : "."}{observacaoReuniao(minha)}
+          </span>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -133,37 +173,13 @@ export function AprovacaoOrcamento({ id }: { id: string }) {
               </div>
             ) : null;
           })()}
-          <TabelaOrcamento linhas={atual.linhas} />
+          <TabelaOrcamento linhas={atual.linhas} blocos={atual.blocos} rodapeBloco={decisaoBloco}
+            mostrarStatus={o.status !== "cancelado" && atual.status !== "substituida"} />
           <HistoricoOrcamento alteracoes={alteracoes} versoes={versoes} />
           <p className="suave pequeno">
             O valor de cada linha é o total a pagar. No Meta Ads, o imposto de 12,15% já está incluso nesse valor.
+            {comNomes && " Cada bloco é um boleto separado, com aprovação e P.I.s próprios."}
           </p>
-
-          {aberto && !podeAprovar && (
-            <div className="aviso aviso-atencao"><p>Seu acesso é só de visualização. A decisão fica com quem aprova pela empresa.</p></div>
-          )}
-          {aberto && podeAprovar && !pedindo && (
-            <div className="decisao-botoes">
-              <Botao variante="primario" onClick={() => setConfirmar(true)}><LuCheck /> Aprovar orçamento</Botao>
-              <Botao onClick={() => setPedindo(true)}>Pedir alteração</Botao>
-            </div>
-          )}
-          {aberto && podeAprovar && pedindo && (
-            <div className="pedido-alteracao">
-              <CampoTexto rotulo="O que precisa ser ajustado?" rows={3} value={texto} autoFocus
-                onChange={(e) => setTexto(e.target.value)} erro={erro} />
-              <div className="decisao-botoes">
-                <Botao variante="primario" carregando={ocupado} onClick={() => void decidir("alteracoes_solicitadas")}>Enviar pedido de alteração</Botao>
-                <Botao variante="fantasma" onClick={() => { setPedindo(false); setErro(null); }}>Voltar</Botao>
-              </div>
-            </div>
-          )}
-          {minha && (
-            <p className={minha.decisao === "aprovado" ? "decisao-ok" : "decisao-alt"}>
-              {minha.decisao === "aprovado" ? "Aprovado" : "Alteração pedida"} {autoriaDecisao(minha)}
-              {minha.comentario ? `: "${minha.comentario}"` : "."}{observacaoReuniao(minha)}
-            </p>
-          )}
 
           {anteriores.length > 0 && (
             <details className="versoes-anteriores">
@@ -187,12 +203,16 @@ export function AprovacaoOrcamento({ id }: { id: string }) {
 
       <PedidosInsercao orcamento={o} versao={atual} cliente={undefined} campanha={campanha?.nome} equipe={false} />
 
-      <Modal aberto={confirmar} titulo="Aprovar este orçamento?" onFechar={() => setConfirmar(false)} largura={460}
+      <Modal aberto={!!confirmar} titulo={comNomes ? `Aprovar o bloco ${confirmar?.nome ?? ""}?` : "Aprovar este orçamento?"}
+        onFechar={() => setConfirmar(null)} largura={460}
         rodape={<>
-          <Botao variante="fantasma" onClick={() => setConfirmar(false)}>Voltar</Botao>
-          <Botao variante="primario" carregando={ocupado} onClick={() => void decidir("aprovado")}>Aprovar {formatarMoeda(t.valor)}</Botao>
+          <Botao variante="fantasma" onClick={() => setConfirmar(null)}>Voltar</Botao>
+          <Botao variante="primario" carregando={ocupado} onClick={() => confirmar && void decidir(confirmar, "aprovado")}>
+            Aprovar {formatarMoeda(confirmar?.total.valor ?? 0)}
+          </Botao>
         </>}>
-        <p>Total de {formatarMoeda(t.valor)} para {formatarMes(o.mes_referencia)}. A aprovação fica registrada no seu nome, com data e hora.</p>
+        <p>Total de {formatarMoeda(confirmar?.total.valor ?? 0)} para {formatarMes(o.mes_referencia)}
+          {comNomes ? `, bloco ${confirmar?.nome}` : ""}. A aprovação fica registrada no seu nome, com data e hora.</p>
       </Modal>
     </div>
   );

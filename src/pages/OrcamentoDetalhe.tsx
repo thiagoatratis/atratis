@@ -27,6 +27,8 @@ import {
 } from "../types";
 import { autoriaDecisao, observacaoReuniao } from "../lib/reuniao";
 import { AprovarEmReuniao } from "../components/AprovarEmReuniao";
+import { BLOCO_PADRAO, STATUS_BLOCO, blocosDaVersao, blocosUsados, mostrarNomesDosBlocos } from "../lib/blocos";
+import { BaixarImagemOrcamento } from "../components/ImagemOrcamento";
 
 export function OrcamentoDetalhe({ id }: { id: string }) {
   const avisar = useAviso();
@@ -47,12 +49,13 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
 
   const [verId, setVerId] = useState<string | undefined>();
   const [editando, setEditando] = useState(false);
-  const [linha, setLinha] = useState<LinhaOrcamento | "nova" | null>(null);
+  const [linha, setLinha] = useState<LinhaOrcamento | { bloco: string } | null>(null);
   const [novaVersao, setNovaVersao] = useState(false);
   const [cancelando, setCancelando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [avisarCliente, setAvisarCliente] = useState(false);
   const [reuniao, setReuniao] = useState(false);
+  const [blocosReuniao, setBlocosReuniao] = useState<string[]>([]);
 
   const atualId = dados.data?.versoes.at(-1)?.id;
   useEffect(() => setVerId(atualId), [atualId]);
@@ -72,15 +75,32 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
   // Desde 29/10/2026 os valores da versão atual mudam mesmo depois de enviada; cada mudança vai para o histórico.
   const rascunho = editavel && vista?.id === atual?.id && atual?.status !== "substituida";
   const enviada = atual?.status !== "rascunho";
-  const reenviar = atual?.status === "alteracoes_solicitadas";
+  // Blocos de boleto da versão atual e o que falta decidir.
+  const blocosAtuais = atual ? blocosDaVersao(atual.linhas, atual.blocos) : [];
+  const comAjuste = atual?.blocos.filter((b) => b.status === "alteracoes_solicitadas") ?? [];
+  const reenviar = editavel && atual?.status !== "rascunho" && comAjuste.length > 0;
   const podeEnviar = editavel && (atual?.status === "rascunho" || reenviar) && (atual?.linhas.length ?? 0) > 0;
-  const podeAprovarEmReuniao = editavel && (atual?.linhas.length ?? 0) > 0
-    && (atual?.status === "rascunho" || atual?.status === "pendente" || reenviar);
+  const faltaDecidir = atual?.status === "rascunho"
+    ? blocosAtuais.map((b) => b.nome)
+    : blocosAtuais.filter((b) => b.status === "pendente" || b.status === "alteracoes_solicitadas").map((b) => b.nome);
+  const podeAprovarEmReuniao = editavel && (atual?.linhas.length ?? 0) > 0 && faltaDecidir.length > 0;
+  // Última decisão do bloco desde o último envio dele (a anterior fica só no histórico).
+  const ultimaDecisaoDoBloco = (bloco: string) => {
+    const info = atual?.blocos.find((b) => b.bloco === bloco);
+    return decisoes.filter((d) => d.version_id === atual?.id && (d.bloco ?? BLOCO_PADRAO) === bloco
+      && d.created_at >= (info?.enviado_em ?? atual?.enviado_em ?? "")).at(-1);
+  };
+  const mostrarCaixasReuniao = faltaDecidir.length > 1 || mostrarNomesDosBlocos(blocosAtuais);
 
-  // Mudança em orçamento já aprovado: continua aprovado, mas o P.I. emitido não muda.
-  const confirmarSeAprovado = () => atual?.status !== "aprovado" || window.confirm(
-    "Este orçamento já foi aprovado. A mudança fica no histórico (que o cliente também vê) e ele continua aprovado.\n\n"
-    + "P.I. já emitido não muda: se precisar, cancele e emita de novo.");
+  // Mudança que toca bloco já aprovado (o de antes ou o de depois): continua aprovado, mas o P.I. emitido não muda.
+  const confirmarSeAprovado = (blocos: string[]) => {
+    const aprovados = [...new Set(blocos)].filter((nome) => atual?.blocos.find((b) => b.bloco.toLocaleLowerCase("pt-BR")
+      === nome.toLocaleLowerCase("pt-BR"))?.status === "aprovado");
+    return !aprovados.length || window.confirm(
+      `${mostrarNomesDosBlocos(blocosAtuais) ? `O bloco "${aprovados.join('" e o bloco "')}" já foi aprovado` : "Este orçamento já foi aprovado"}. `
+      + "A mudança fica no histórico (que o cliente também vê) e o valor novo continua aprovado, sem passar pelo cliente.\n\n"
+      + "P.I. já emitido não muda: se precisar, cancele e emita de novo.");
+  };
   const decisoesDaVista = decisoes.filter((d) => d.version_id === vista?.id);
 
   async function enviar() {
@@ -99,7 +119,7 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
 
   async function excluir(l: LinhaOrcamento) {
     if (!window.confirm(`Excluir a linha ${l.plataforma}${l.descricao ? ` (${l.descricao})` : ""}?${enviada ? " A remoção fica no histórico que o cliente vê." : ""}`)) return;
-    if (!confirmarSeAprovado()) return;
+    if (!confirmarSeAprovado([l.bloco])) return;
     try {
       await excluirLinha(l.id);
       await dados.reload();
@@ -119,7 +139,7 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
           <>
             <Botao onClick={() => setEditando(true)}><LuPencil /> Editar dados</Botao>
             {o.enviado_em && <Botao onClick={() => setAvisarCliente(true)}><LuLink /> Link para o cliente</Botao>}
-            {podeAprovarEmReuniao && <Botao onClick={() => setReuniao(true)}><LuHandshake /> Aprovado em reunião</Botao>}
+            {podeAprovarEmReuniao && <Botao onClick={() => { setBlocosReuniao(faltaDecidir); setReuniao(true); }}><LuHandshake /> Aprovado em reunião</Botao>}
             {atual?.status !== "rascunho" && (
               <Botao onClick={() => setNovaVersao(true)}><LuCopyPlus /> Nova versão</Botao>
             )}
@@ -136,9 +156,17 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
       {o.status === "cancelado" && (
         <div className="aviso aviso-atencao"><p>Cancelado em {formatarDataHora(o.cancelado_em)}. Motivo: {o.motivo_cancelamento}</p></div>
       )}
-      {o.status === "alteracoes_solicitadas" && (
+      {reenviar && (
         <div className="aviso aviso-erro">
-          <p>O cliente pediu alterações{decisoes.at(-1)?.comentario ? `: "${decisoes.at(-1)!.comentario}"` : "."} Ajuste os valores aqui e clique em Reenviar ao cliente.</p>
+          {comAjuste.map((b) => {
+            const d = ultimaDecisaoDoBloco(b.bloco);
+            return (
+              <p key={b.bloco}>
+                O cliente pediu ajuste{mostrarNomesDosBlocos(blocosAtuais) ? ` no bloco ${b.bloco}` : ""}{d?.comentario ? `: "${d.comentario}"` : "."}
+              </p>
+            );
+          })}
+          <p>Ajuste os valores aqui e clique em Reenviar ao cliente. Os blocos já aprovados continuam aprovados.</p>
         </div>
       )}
       {(o.status === "aguardando_aprovacao" || o.status === "em_analise") && (
@@ -147,11 +175,14 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
         </div>
       )}
 
-      <div className="layout-detalhe">
+      <div className="layout-detalhe layout-orcamento">
         <div className="pilha-larga">
         <section aria-labelledby="titulo-valores">
           <div className="secao-topo">
             <h2 id="titulo-valores" className="titulo-secao">Valores</h2>
+            {vista && vista.linhas.length > 0 && (
+              <BaixarImagemOrcamento orcamento={o} versao={vista} cliente={cliente?.nome_comercial} />
+            )}
             {versoes.length > 1 && (
               <div className="versoes" role="group" aria-label="Versões">
                 {versoes.map((v) => (
@@ -174,22 +205,42 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
           {vista?.observacao && <p className="peca-novidade">O que mudou nesta versão: {vista.observacao}</p>}
 
           {!vista?.linhas.length ? (
-            <Vazio titulo="Nenhum valor ainda" acao={rascunho && <Botao variante="primario" onClick={() => setLinha("nova")}>Adicionar a primeira linha</Botao>}>
-              Cada linha tem a plataforma, uma descrição opcional e o valor do boleto. O imposto do Meta Ads (12,15%) já fica incluso.
+            <Vazio titulo="Nenhum valor ainda" acao={rascunho && <Botao variante="primario" onClick={() => setLinha({ bloco: BLOCO_PADRAO })}>Adicionar a primeira linha</Botao>}>
+              Cada linha tem o bloco de boleto, o projeto, o canal, o objetivo e o valor. O imposto do Meta Ads (12,15%) já fica incluso.
             </Vazio>
           ) : (
-            <TabelaOrcamento linhas={vista.linhas}
+            <TabelaOrcamento linhas={vista.linhas} blocos={vista.blocos}
+              mostrarStatus={vista.status !== "rascunho" && vista.status !== "substituida" && o.status !== "cancelado"}
               onEditar={rascunho ? (l) => setLinha(l) : undefined}
-              onExcluir={rascunho ? (l) => void excluir(l) : undefined} />
+              onExcluir={rascunho ? (l) => void excluir(l) : undefined}
+              rodapeBloco={(b) => {
+                const d = vista.id === atual?.id ? ultimaDecisaoDoBloco(b.nome) : undefined;
+                if (!rascunho && !d) return null;
+                return (
+                  <div className="bloco-rodape">
+                    {d && (
+                      <span className={d.decisao === "aprovado" ? "decisao-ok" : "decisao-alt"}>
+                        {d.decisao === "aprovado" ? "Aprovado" : "Ajuste pedido"} {autoriaDecisao(d)}{d.comentario ? `: "${d.comentario}"` : "."}{observacaoReuniao(d)}
+                      </span>
+                    )}
+                    {rascunho && mostrarNomesDosBlocos(blocosAtuais) && (
+                      <Botao variante="fantasma" onClick={() => setLinha({ bloco: b.nome })}><LuPlus /> Linha em {b.nome}</Botao>
+                    )}
+                  </div>
+                );
+              }} />
           )}
           {rascunho && (vista?.linhas.length ?? 0) > 0 && (
-            <div className="acoes-abaixo"><Botao onClick={() => setLinha("nova")}><LuPlus /> Adicionar linha</Botao></div>
+            <div className="acoes-abaixo">
+              <Botao onClick={() => setLinha({ bloco: blocosAtuais.at(-1)?.nome ?? BLOCO_PADRAO })}><LuPlus /> Adicionar linha</Botao>
+              <Botao variante="fantasma" onClick={() => setLinha({ bloco: "" })}><LuPlus /> Novo bloco de boleto</Botao>
+            </div>
           )}
 
           {decisoesDaVista.length > 0 && <ListaDecisoes decisoes={decisoesDaVista} />}
           <HistoricoOrcamento alteracoes={alteracoes} versoes={versoes} />
         </section>
-        <PedidosInsercao orcamento={o} versao={atual} cliente={cliente} campanha={campanha?.nome} equipe />
+        <PedidosInsercao orcamento={o} versao={atual} versoes={versoes} cliente={cliente} campanha={campanha?.nome} equipe />
         </div>
 
         <aside className="lateral-detalhe">
@@ -214,7 +265,7 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
         onSalvo={() => { setEditando(false); avisar("Dados salvos."); void dados.reload(); }} />
       {atual && (
         <LinhaFormulario linha={linha} versionId={atual.id} ordem={Math.max(0, ...atual.linhas.map((l) => l.ordem)) + 1}
-          projetos={projetosDoOrcamento(atual.linhas)} onFechar={() => setLinha(null)}
+          projetos={projetosDoOrcamento(atual.linhas)} blocos={blocosUsados(atual.linhas)} onFechar={() => setLinha(null)}
           antesDeSalvar={confirmarSeAprovado}
           onPronto={() => { setLinha(null); void dados.reload(); }} />
       )}
@@ -223,17 +274,40 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
       <Cancelar aberto={cancelando} budgetId={o.id} onFechar={() => setCancelando(false)}
         onPronto={() => { setCancelando(false); avisar("Orçamento cancelado."); void dados.reload(); }} />
       <AprovarEmReuniao aberto={reuniao} onFechar={() => setReuniao(false)}
-        oQue={<>o orçamento <strong>{tituloOrcamento(o)}</strong> ({formatarMoeda(totais(atual?.linhas ?? []).valor)})</>}
+        oQue={mostrarCaixasReuniao
+          ? <>os blocos marcados abaixo do orçamento <strong>{tituloOrcamento(o)}</strong></>
+          : <>o orçamento <strong>{tituloOrcamento(o)}</strong> ({formatarMoeda(totais(atual?.linhas ?? []).valor)})</>}
         aviso={atual?.status === "rascunho" ? "O orçamento ainda não foi enviado: ele fica enviado e aprovado ao mesmo tempo." : undefined}
+        extra={mostrarCaixasReuniao && (
+          <fieldset className="grupo">
+            <legend>Blocos aprovados na reunião</legend>
+            <div className="opcoes-radio">
+              {blocosAtuais.filter((b) => faltaDecidir.includes(b.nome)).map((b) => (
+                <label key={b.nome} className="check">
+                  <input type="checkbox" checked={blocosReuniao.includes(b.nome)}
+                    onChange={(e) => setBlocosReuniao(e.target.checked ? [...blocosReuniao, b.nome] : blocosReuniao.filter((x) => x !== b.nome))} />
+                  <span>{b.nome} <small className="suave">({formatarMoeda(b.total.valor)}{b.status ? `, ${STATUS_BLOCO[b.status].rotulo.toLowerCase()}` : ""})</small></span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
         onConfirmar={async (quando, quem, obs) => {
-          await aprovarOrcamentoEmReuniao(o.id, quando, quem, obs);
+          if (mostrarCaixasReuniao && !blocosReuniao.length) throw new Error("Marque pelo menos um bloco.");
+          await aprovarOrcamentoEmReuniao(o.id, quando, quem, obs, mostrarCaixasReuniao ? blocosReuniao : undefined);
           setReuniao(false);
           avisar("Aprovação em reunião registrada. Agora é só emitir os P.I.s logo abaixo dos valores.");
           await dados.reload();
         }} />
       <AvisarCliente aberto={avisarCliente} onFechar={() => setAvisarCliente(false)}
         caminho={`/orcamentos/${o.id}`} clientId={o.client_id}
-        mensagem={(link, pessoal) => mensagemOrcamento(o, totais(atual?.linhas ?? []).valor, link, pessoal)} />
+        mensagem={(link, pessoal) => mensagemOrcamento(o, totais(atual?.linhas ?? []).valor, link, pessoal)}
+        extra={atual && atual.linhas.length > 0 && (
+          <div className="extra-imagem">
+            <p className="suave pequeno">Quer mandar a tabela junto? Baixe a imagem do orçamento no formato da planilha.</p>
+            <BaixarImagemOrcamento orcamento={o} versao={atual} cliente={cliente?.nome_comercial} />
+          </div>
+        )} />
     </>
   );
 }
@@ -255,7 +329,7 @@ export function ListaDecisoes({ decisoes }: { decisoes: DecisaoOrcamento[] }) {
     <ul className="decisoes-orcamento">
       {decisoes.map((d) => (
         <li key={d.id} className={d.decisao === "aprovado" ? "decisao-ok" : "decisao-alt"}>
-          {d.decisao === "aprovado" ? "Aprovado" : "Alteração pedida"} {autoriaDecisao(d)}
+          {d.bloco && d.bloco !== BLOCO_PADRAO ? `${d.bloco}: ` : ""}{d.decisao === "aprovado" ? "Aprovado" : "Alteração pedida"} {autoriaDecisao(d)}
           {" "}(total {formatarMoeda(d.total)}){d.comentario ? `: "${d.comentario}"` : "."}{observacaoReuniao(d)}
         </li>
       ))}
@@ -265,12 +339,14 @@ export function ListaDecisoes({ decisoes }: { decisoes: DecisaoOrcamento[] }) {
 
 // ------------------------------------------------------------------
 
-function LinhaFormulario({ linha, versionId, ordem, projetos, onFechar, onPronto, antesDeSalvar }: {
-  linha: LinhaOrcamento | "nova" | null; versionId: string; ordem: number; projetos: string[]; onFechar: () => void; onPronto: () => void;
-  antesDeSalvar?: () => boolean;
+function LinhaFormulario({ linha, versionId, ordem, projetos, blocos, onFechar, onPronto, antesDeSalvar }: {
+  linha: LinhaOrcamento | { bloco: string } | null; versionId: string; ordem: number; projetos: string[]; blocos: string[];
+  onFechar: () => void; onPronto: () => void;
+  antesDeSalvar?: (blocos: string[]) => boolean;
 }) {
   const aberto = linha !== null;
-  const existente = linha && linha !== "nova" ? linha : null;
+  const existente = linha && "id" in linha ? linha : null;
+  const [bloco, setBloco] = useState(BLOCO_PADRAO);
   const [plataforma, setPlataforma] = useState(PLATAFORMAS[0]);
   const [outra, setOutra] = useState("");
   const [projeto, setProjeto] = useState("");
@@ -284,6 +360,7 @@ function LinhaFormulario({ linha, versionId, ordem, projetos, onFechar, onPronto
     const conhecida = existente ? PLATAFORMAS.includes(existente.plataforma) : true;
     setPlataforma(existente ? (conhecida ? existente.plataforma : OUTRA_PLATAFORMA) : PLATAFORMAS[0]);
     setOutra(existente && !conhecida ? existente.plataforma : "");
+    setBloco(linha?.bloco ?? BLOCO_PADRAO);
     setProjeto(existente ? existente.projeto ?? "" : projetos.at(-1) ?? "");
     setDescricao(existente?.descricao ?? "");
     setValor(existente ? moedaParaCampo(existente.valor) : "");
@@ -300,8 +377,11 @@ function LinhaFormulario({ linha, versionId, ordem, projetos, onFechar, onPronto
     setErro(null);
     if (!nome) return setErro("Digite o nome do canal.");
     if (!numero || numero <= 0) return setErro("Digite o valor do boleto, por exemplo 1.100,00.");
-    const campos: CamposLinha = { projeto: projeto.trim() || null, plataforma: nome, descricao: descricao.trim() || null, valor: numero };
-    if (antesDeSalvar && !antesDeSalvar()) return;
+    if (!bloco.trim()) return setErro("Dê um nome ao bloco de boleto, por exemplo Revista.");
+    const campos: CamposLinha = {
+      bloco: bloco.trim(), projeto: projeto.trim() || null, plataforma: nome, descricao: descricao.trim() || null, valor: numero,
+    };
+    if (antesDeSalvar && !antesDeSalvar(existente ? [existente.bloco, campos.bloco] : [campos.bloco])) return;
     setSalvando(true);
     try {
       if (existente) await atualizarLinha(existente.id, campos);
@@ -322,6 +402,10 @@ function LinhaFormulario({ linha, versionId, ordem, projetos, onFechar, onPronto
       </>}>
       <form id="form-linha" onSubmit={salvar} noValidate className="pilha">
         {erro && <div className="aviso aviso-erro" role="alert"><p>{erro}</p></div>}
+        <Campo rotulo="Bloco de boleto" value={bloco} onChange={(e) => setBloco(e.target.value)} list="blocos-orcamento" maxLength={60}
+          placeholder="Ex.: Geral, Revista" autoFocus={!bloco}
+          ajuda="Cada bloco tem tabela, aprovação e P.I.s próprios (boletos separados). Use Geral quando não houver separação." />
+        <datalist id="blocos-orcamento">{blocos.map((b) => <option key={b} value={b} />)}</datalist>
         <Campo rotulo="Projeto" value={projeto} onChange={(e) => setProjeto(e.target.value)} list="projetos-orcamento" maxLength={80}
           placeholder="Ex.: Institucional, Revista, Ebook Energia"
           ajuda={projetos.length ? "Escolha um projeto da lista ou digite um novo. As linhas do mesmo projeto ficam juntas na tabela." : "As linhas do mesmo projeto ficam juntas na tabela."} />

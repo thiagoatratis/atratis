@@ -223,6 +223,10 @@ select public.nova_versao_orcamento('20000000-0000-0000-0000-000000000001', 'Inc
 select tests.ok((select status from public.budget_versions
                  where budget_id = '20000000-0000-0000-0000-000000000001' and numero = 2) = 'aprovado',
   'versão aprovada continua aprovada no histórico');
+-- Muda algo (bloco igual ao aprovado continuaria aprovado: migration 014).
+insert into public.budget_lines (version_id, plataforma, valor)
+select v.id, 'TikTok Ads', 300 from public.budget_versions v
+ where v.budget_id = '20000000-0000-0000-0000-000000000001' and v.numero = 3;
 select public.enviar_orcamento('20000000-0000-0000-0000-000000000001');
 select public.nova_versao_orcamento('20000000-0000-0000-0000-000000000001', 'Corrigir valor');
 select tests.ok((select status from public.budget_versions

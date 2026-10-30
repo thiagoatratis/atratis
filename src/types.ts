@@ -234,6 +234,8 @@ export interface LinhaOrcamento {
   descricao: string | null;
   /** Agrupa as linhas na tabela (ex.: Institucional, Revista). */
   projeto: string | null;
+  /** Bloco de boleto (ex.: Geral, Revista): tabela, aprovação e P.I.s próprios. */
+  bloco: string;
   valor: number;
   aliquota: number;
   imposto: number;
@@ -252,6 +254,16 @@ export interface VersaoOrcamento {
   decidido_em: string | null;
   created_at: string;
   linhas: LinhaOrcamento[];
+  /** Situação de cada bloco nesta versão. */
+  blocos: BlocoVersao[];
+}
+
+export interface BlocoVersao {
+  version_id: string;
+  bloco: string;
+  status: StatusVersaoOrcamento;
+  enviado_em: string | null;
+  decidido_em: string | null;
 }
 
 export interface DecisaoOrcamento {
@@ -261,6 +273,8 @@ export interface DecisaoOrcamento {
   decisao: "aprovado" | "alteracoes_solicitadas";
   comentario: string | null;
   total: number;
+  /** Bloco decidido; vazio nas decisões de antes dos blocos (orçamento inteiro). */
+  bloco?: string | null;
   user_id: string | null;
   user_email: string | null;
   user_nome: string | null;
@@ -309,6 +323,8 @@ export interface PedidoInsercao {
   plataforma: string | null;
   veiculacao: string;
   valor: number;
+  /** Bloco de boleto de onde o P.I. saiu (vazio nos P.I.s de antes dos blocos). */
+  bloco?: string | null;
   mes_referencia: string;
   campanha: string;
   periodo: string;
@@ -454,6 +470,8 @@ export interface AlteracaoOrcamento {
   descricao_antes: string | null;
   projeto: string | null;
   projeto_antes: string | null;
+  bloco?: string | null;
+  bloco_antes?: string | null;
   valor_antes: number | null;
   valor_depois: number | null;
   status_orcamento: StatusOrcamento;
