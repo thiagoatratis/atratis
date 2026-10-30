@@ -3,7 +3,7 @@ import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { ErroApp } from "./api";
 import { erro } from "./criativos";
-import { formatarMes, formatarMoeda } from "./dinheiro";
+import { formatarMes } from "./dinheiro";
 import { gerarPdfPI } from "./pdfPi";
 import type { CamposEmissaoPI, EnvioPI, PedidoInsercao } from "../types";
 
@@ -89,29 +89,53 @@ export async function baixarPdf(p: PedidoInsercao, podeGerar: boolean): Promise<
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
-/** Texto padrão do e-mail (editável antes de copiar). */
-export function emailPadrao(pis: PedidoInsercao[], linkPortal: string): { assunto: string; corpo: string } {
+/** "R$ 4.500" (sem centavos quando é valor redondo) ou "R$ 4.500,50". */
+export function moedaCurta(v: number): string {
+  const redondo = Math.round(v * 100) % 100 === 0;
+  return v.toLocaleString("pt-BR", {
+    style: "currency", currency: "BRL", minimumFractionDigits: redondo ? 0 : 2, maximumFractionDigits: redondo ? 0 : 2,
+  }).replace(/\u00a0/g, " ");
+}
+
+/** "Bom dia", "Boa tarde" ou "Boa noite" pela hora de Brasília. */
+export function saudacao(agora = new Date()): string {
+  const h = Number(new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "numeric", hourCycle: "h23" }).format(agora));
+  return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+}
+
+/**
+ * Texto padrão do e-mail dos P.I.s (editável antes de enviar), no modelo da
+ * Atratis: distribuição da verba por bloco de boleto e por canal.
+ */
+export function emailPadrao(pis: PedidoInsercao[], opcoes: {
+  distribuicao: { bloco: string; canais: { canal: string; valor: number }[]; total: number }[];
+  remetente?: string | null;
+}): { assunto: string; corpo: string } {
   const primeiro = pis[0];
-  const cliente = primeiro?.dados_cliente.nome ?? "";
-  const mes = formatarMes(primeiro?.mes_referencia);
-  const numeros = pis.map((p) => p.numero).join(", ");
-  const assunto = pis.length === 1
-    ? `P.I. ${primeiro.numero} - ${cliente} - ${primeiro.veiculacao} - ${mes}`
-    : `P.I.s ${numeros} - ${cliente} - ${mes}`;
-  const linhas = pis.map((p) => `• P.I. ${p.numero}: ${p.veiculacao}, ${formatarMoeda(p.valor)}`);
+  const cliente = (primeiro?.dados_cliente.nome ?? "").trim();
+  const mes = formatarMes(primeiro?.mes_referencia).replace("/", " ");
+  const assunto = `${cliente ? `[${cliente.toLocaleUpperCase("pt-BR")}] ` : ""}Pedido de Inserção - ${mes}`;
+  const comNomes = opcoes.distribuicao.length > 1 || opcoes.distribuicao.some((d) => d.bloco !== "Geral");
+  const blocos = opcoes.distribuicao.flatMap((d) => [
+    ...(comNomes ? [d.bloco] : []),
+    ...d.canais.map((c) => `${c.canal}: ${moedaCurta(c.valor)}`),
+    `Total: ${moedaCurta(d.total)}`,
+    "",
+  ]);
   const corpo = [
-    "Olá!",
+    `${saudacao()} pessoal!`,
     "",
     pis.length === 1
-      ? `Segue o Pedido de Inserção referente a ${mes}, conforme o orçamento aprovado:`
-      : `Seguem os Pedidos de Inserção referentes a ${mes}, conforme o orçamento aprovado:`,
+      ? "Estou encaminhando o P.I. referente à campanha, considerando a seguinte distribuição de verba:"
+      : "Estou encaminhando os P.I.s referentes à campanha, considerando a seguinte distribuição de verba:",
     "",
-    ...linhas,
+    ...blocos,
+    "Seguimos com essa estrutura alinhada à estratégia definida para geração de leads e distribuição entre canais.",
     "",
-    `O PDF está anexo e também disponível no portal: ${linkPortal}`,
+    "Fico à disposição caso precise de qualquer ajuste ou validação.",
     "",
-    "Qualquer dúvida, estamos à disposição.",
-    "",
+    "Atenciosamente,",
+    ...(opcoes.remetente?.trim() ? [opcoes.remetente.trim()] : []),
     "Atratis Digital",
   ].join("\n");
   return { assunto, corpo };

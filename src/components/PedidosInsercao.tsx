@@ -8,7 +8,8 @@ import {
 import { gerarPdfPI, type DadosPdfPI } from "../lib/pdfPi";
 import { formatarMes, formatarMoeda } from "../lib/dinheiro";
 import { totais } from "../lib/orcamentos";
-import { blocosDaVersao, mostrarNomesDosBlocos, type BlocoExibido } from "../lib/blocos";
+import { blocosDaVersao, distribuicaoDosPIs, mostrarNomesDosBlocos, type BlocoExibido } from "../lib/blocos";
+import { useAuth } from "../lib/auth";
 import { formatarData, formatarDataHora } from "../lib/format";
 import { Link } from "../lib/router";
 import { Botao, Campo, CampoTexto, Carregando, Modal, Selo, useAviso } from "./ui";
@@ -162,7 +163,7 @@ export function PedidosInsercao({ orcamento, versao, cliente, campanha, equipe }
           }} />
       )}
       {email && (
-        <EmailPIs pis={email} orcamento={orcamento} cliente={cliente} onFechar={() => setEmail(null)}
+        <EmailPIs pis={email} orcamento={orcamento} versao={versao} cliente={cliente} onFechar={() => setEmail(null)}
           onEnviado={() => { setEmail(null); void envios.reload(); void pis.reload(); }} />
       )}
       <CancelarPI pi={cancelando} onFechar={() => setCancelando(null)}
@@ -458,15 +459,19 @@ type ModoEnvio = "sistema" | "manual";
  * e manda pelo próprio e-mail. Destinatários: sugere os aprovadores do
  * cliente e o e-mail de contato do cadastro; a equipe tira e põe na hora.
  */
-function EmailPIs({ pis: oferecidos, orcamento, cliente, onFechar, onEnviado }: {
-  pis: PedidoInsercao[]; orcamento: Orcamento; cliente: Cliente | undefined; onFechar: () => void; onEnviado: () => void;
+function EmailPIs({ pis: oferecidos, orcamento, versao, cliente, onFechar, onEnviado }: {
+  pis: PedidoInsercao[]; orcamento: Orcamento; versao: VersaoOrcamento | undefined; cliente: Cliente | undefined;
+  onFechar: () => void; onEnviado: () => void;
 }) {
   const avisar = useAviso();
-  const link = `${window.location.origin}/orcamentos/${orcamento.id}`;
+  const { perfil } = useAuth();
   // Com vários P.I.s, a equipe escolhe quais vão (ex.: só os por plataforma).
   const [marcados, setMarcados] = useState<string[]>(() => oferecidos.map((p) => p.id));
   const pis = useMemo(() => oferecidos.filter((p) => marcados.includes(p.id)), [oferecidos, marcados]);
-  const padrao = useMemo(() => emailPadrao(pis, link), [pis, link]);
+  const padrao = useMemo(() => emailPadrao(pis, {
+    distribuicao: distribuicaoDosPIs(pis, (vid) => (vid === versao?.id ? versao.linhas : [])),
+    remetente: perfil?.nome || null,
+  }), [pis, versao, perfil?.nome]);
   const vinculos = useAsync(() => listarVinculos(orcamento.client_id), [orcamento.client_id]);
   const [modo, setModo] = useState<ModoEnvio>("sistema");
   const [para, setPara] = useState<string[] | null>(null);

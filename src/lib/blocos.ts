@@ -97,8 +97,12 @@ export function distribuicaoDosPIs(pis: PedidoInsercao[], linhasDaVersao: (versi
     if (p.plataforma) {
       m.set(p.plataforma, (m.get(p.plataforma) ?? 0) + centavos(p.valor));
     } else {
-      for (const l of linhasDaVersao(p.version_id).filter((l) => (l.bloco || BLOCO_PADRAO) === bloco)) {
-        m.set(l.plataforma, (m.get(l.plataforma) ?? 0) + centavos(l.valor));
+      const ls = linhasDaVersao(p.version_id).filter((l) => (l.bloco || BLOCO_PADRAO) === bloco);
+      // Sem as linhas da versão (ou se o valor não bate), fica a veiculação do próprio P.I.
+      if (ls.length && ls.reduce((t, l) => t + centavos(l.valor), 0) === centavos(p.valor)) {
+        for (const l of ls) m.set(l.plataforma, (m.get(l.plataforma) ?? 0) + centavos(l.valor));
+      } else {
+        m.set(p.veiculacao, (m.get(p.veiculacao) ?? 0) + centavos(p.valor));
       }
     }
     porBloco.set(bloco, m);
