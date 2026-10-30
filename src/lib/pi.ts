@@ -37,10 +37,10 @@ export async function salvarPdf(p: PedidoInsercao): Promise<Uint8Array> {
  * Emite os P.I.s (o banco numera e grava) e em seguida gera e guarda os PDFs.
  * Se algum PDF falhar, o P.I. continua emitido e a tela oferece gerar de novo.
  */
-export async function emitirPIs(budgetId: string, porPlataforma: boolean, campos: CamposEmissaoPI)
+export async function emitirPIs(budgetId: string, porPlataforma: boolean, campos: CamposEmissaoPI, blocos: string[])
   : Promise<{ pis: PedidoInsercao[]; falhasPdf: number }> {
   const { data, error } = await supabase.rpc("emitir_pis", {
-    p_budget: budgetId, p_por_plataforma: porPlataforma, p_dados: campos,
+    p_budget: budgetId, p_por_plataforma: porPlataforma, p_dados: campos, p_blocos: blocos,
   });
   erro(error);
   const pis = ((data ?? []) as PedidoInsercao[]).map(normalizar);

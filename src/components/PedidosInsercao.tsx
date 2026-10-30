@@ -7,11 +7,13 @@ import {
 } from "../lib/pi";
 import { gerarPdfPI, type DadosPdfPI } from "../lib/pdfPi";
 import { formatarMes, formatarMoeda } from "../lib/dinheiro";
+import { totais } from "../lib/orcamentos";
+import { blocosDaVersao, mostrarNomesDosBlocos, type BlocoExibido } from "../lib/blocos";
 import { formatarData, formatarDataHora } from "../lib/format";
 import { Link } from "../lib/router";
 import { Botao, Campo, CampoTexto, Carregando, Modal, Selo, useAviso } from "./ui";
 import type {
-  Agencia, CamposEmissaoPI, Cliente, DadosEmpresaPI, EnvioPI, Orcamento, PedidoInsercao, VersaoOrcamento,
+  Agencia, CamposEmissaoPI, Cliente, DadosEmpresaPI, EnvioPI, LinhaOrcamento, Orcamento, PedidoInsercao, VersaoOrcamento,
 } from "../types";
 
 const PRAZO_PADRAO = "Data do vencimento do boleto";
@@ -57,7 +59,8 @@ export function PedidosInsercao({ orcamento, versao, cliente, campanha, equipe }
   const [cancelando, setCancelando] = useState<PedidoInsercao | null>(null);
   const [baixando, setBaixando] = useState<string | null>(null);
 
-  const podeEmitir = equipe && orcamento.status === "aprovado" && versao?.status === "aprovado";
+  // Bloco aprovado já libera os próprios P.I.s, mesmo com outro bloco pendente.
+  const podeEmitir = equipe && orcamento.status !== "cancelado" && !!versao?.blocos.some((b) => b.status === "aprovado");
   const lista = pis.data ?? [];
   const emitidos = lista.filter((p) => p.status === "emitido");
   if (!podeEmitir && !lista.length && !pis.loading) return null;
@@ -86,7 +89,7 @@ export function PedidosInsercao({ orcamento, versao, cliente, campanha, equipe }
         )}
       </div>
       {pis.loading && !pis.data ? <Carregando /> : !lista.length ? (
-        <p className="suave">Orçamento aprovado. Gere o P.I. consolidado ou um por plataforma.</p>
+        <p className="suave">Orçamento aprovado. Gere o P.I. consolidado ou um por canal.</p>
       ) : (
         <div className="tabela-moldura">
           <table className="tabela">
@@ -106,7 +109,7 @@ export function PedidosInsercao({ orcamento, versao, cliente, campanha, equipe }
                     <strong>{p.numero}</strong>
                     {p.status === "cancelado" && <> <Selo tom="neutro">Cancelado</Selo></>}
                   </td>
-                  <td>{p.veiculacao}{p.status === "cancelado" && p.motivo_cancelamento && <span className="celula-sub">Motivo: {p.motivo_cancelamento}</span>}</td>
+                  <td>{p.veiculacao}{p.bloco && lista.some((x) => x.bloco && x.bloco !== p.bloco) && <span className="celula-sub">Bloco {p.bloco}</span>}{p.status === "cancelado" && p.motivo_cancelamento && <span className="celula-sub">Motivo: {p.motivo_cancelamento}</span>}</td>
                   <td className="num tab-num">{formatarMoeda(p.valor)}</td>
                   <td className="col-opcional tab-num">{formatarData(p.data_emissao)}</td>
                   <td className="acoes-linha">
@@ -170,17 +173,45 @@ export function PedidosInsercao({ orcamento, versao, cliente, campanha, equipe }
 
 // ------------------------------------------------------------------
 
+interface GrupoPI { bloco: string; plataforma: string; veiculacao: string; valor: number; projetos: string }
+
+/** Os mesmos grupos que o banco monta em emitir_pis (bloco → consolidado ou por canal), para a prévia. */
+function gruposDosBlocos(blocos: BlocoExibido[], porPlataforma: boolean): GrupoPI[] {
+  const projetosDe = (linhas: LinhaOrcamento[]) => {
+    const vistos: string[] = [];
+    for (const l of [...linhas].sort((a, b) => a.ordem - b.ordem)) if (l.projeto && !vistos.includes(l.projeto)) vistos.push(l.projeto);
+    return vistos.join(", ");
+  };
+  return blocos.flatMap((b) => {
+    const canais = [...new Set([...b.linhas].sort((x, y) => x.ordem - y.ordem).map((l) => l.plataforma))];
+    if (!porPlataforma) {
+      return [{ bloco: b.nome, plataforma: "", veiculacao: canais.join(", "), valor: b.total.valor, projetos: projetosDe(b.linhas) }];
+    }
+    return canais.map((c) => {
+      const ls = b.linhas.filter((l) => l.plataforma === c);
+      return { bloco: b.nome, plataforma: c, veiculacao: c, valor: totais(ls).valor, projetos: projetosDe(ls) };
+    });
+  });
+}
+
+/** Observação final do P.I.: projetos e, depois, o que a equipe digitou. */
+const observacaoDoGrupo = (g: GrupoPI, digitada: string | null) =>
+  [g.projetos ? `Projetos: ${g.projetos}` : "", digitada?.trim() ?? ""].filter(Boolean).join("\n").slice(0, 1500) || null;
+
 function EmitirPI({ aberto, orcamento, versao, cliente, campanhaPadrao, jaEmitidos, onFechar, onEmitidos }: {
   aberto: boolean; orcamento: Orcamento; versao: VersaoOrcamento; cliente: Cliente; campanhaPadrao: string;
   jaEmitidos: PedidoInsercao[]; onFechar: () => void; onEmitidos: (pis: PedidoInsercao[], falhasPdf: number) => void;
 }) {
   const agencia = useAsync(() => obterAgencia(), []);
-  const plataformas = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const l of versao.linhas) m.set(l.plataforma, Math.round(((m.get(l.plataforma) ?? 0) + l.valor) * 100) / 100);
-    return [...m.entries()].map(([plataforma, valor]) => ({ plataforma, valor }));
-  }, [versao]);
-  const total = plataformas.reduce((s, p) => s + p.valor, 0);
+  const todos = useMemo(() => blocosDaVersao(versao.linhas, versao.blocos), [versao]);
+  const aprovados = todos.filter((b) => b.status === "aprovado");
+  const comNomes = mostrarNomesDosBlocos(todos);
+
+  // null = todos os blocos aprovados
+  const [blocoEscolhido, setBlocoEscolhido] = useState<string | null>(null);
+  const escolhidos = blocoEscolhido ? aprovados.filter((b) => b.nome === blocoEscolhido) : aprovados;
+  const canaisPorBloco = escolhidos.map((b) => b.canais);
+  const algumComVariosCanais = canaisPorBloco.some((c) => c.length > 1);
 
   const [porPlataforma, setPorPlataforma] = useState(false);
   const [campos, setCampos] = useState<CamposEmissaoPI>({
@@ -192,16 +223,18 @@ function EmitirPI({ aberto, orcamento, versao, cliente, campanhaPadrao, jaEmitid
   const [gerando, setGerando] = useState(false);
   const [confirmar, setConfirmar] = useState(false);
 
-  const detalhamento = plataformas.length > 1
-    ? ["Valores por plataforma:", ...plataformas.map((p) => `${p.plataforma}: ${formatarMoeda(p.valor)}`)].join("\n")
+  // Consolidado de um bloco só: a observação já vem com o valor de cada canal.
+  const detalhamento = (bs: BlocoExibido[]) => bs.length === 1 && bs[0].canais.length > 1
+    ? ["Valores por plataforma:", ...bs[0].canais.map((c) => `${c.canal}: ${formatarMoeda(c.valor)}`)].join("\n")
     : null;
 
   useEffect(() => {
     if (!aberto) return;
+    setBlocoEscolhido(null);
     setPorPlataforma(false);
     setCampos({
       campanha: campanhaPadrao, periodo: periodoDoMes(orcamento.mes_referencia), prazo_pagamento: PRAZO_PADRAO,
-      faturamento: "bruto", entrega_fatura: "cliente", observacoes: detalhamento, observacao_faturamento: null,
+      faturamento: "bruto", entrega_fatura: "cliente", observacoes: detalhamento(aprovados), observacao_faturamento: null,
     });
     setPrevia(null);
     setErro(null);
@@ -215,15 +248,22 @@ function EmitirPI({ aberto, orcamento, versao, cliente, campanhaPadrao, jaEmitid
   const faltando = [
     !cliente.razao_social && "razão social", !cliente.cnpj && "CNPJ", !cliente.endereco && "endereço",
   ].filter(Boolean) as string[];
-  const quantos = porPlataforma ? plataformas.length : 1;
+  const grupos = gruposDosBlocos(escolhidos, porPlataforma);
+  const quantos = grupos.length;
+  const rotuloGrupo = (g: GrupoPI) => (comNomes ? `${g.bloco}: ${g.veiculacao}` : g.veiculacao);
 
-  function grupos(): { plataforma: string; veiculacao: string; valor: number }[] {
-    return porPlataforma
-      ? plataformas.map((p) => ({ plataforma: p.plataforma, veiculacao: p.plataforma, valor: p.valor }))
-      : [{ plataforma: "", veiculacao: plataformas.map((p) => p.plataforma).join(", "), valor: total }];
+  function escolherBloco(nome: string | null) {
+    setBlocoEscolhido(nome);
+    const bs = nome ? aprovados.filter((b) => b.nome === nome) : aprovados;
+    setCampos((c) => ({ ...c, observacoes: porPlataforma ? c.observacoes : detalhamento(bs) }));
+    setPrevia(null);
   }
 
   function validar(): boolean {
+    if (!grupos.length) {
+      setErro("Nenhum bloco aprovado para gerar P.I.");
+      return false;
+    }
     if (!campos.campanha.trim() || !campos.periodo.trim() || !campos.prazo_pagamento.trim()) {
       setErro("Preencha campanha, período e prazo para pagamento.");
       return false;
@@ -232,21 +272,23 @@ function EmitirPI({ aberto, orcamento, versao, cliente, campanhaPadrao, jaEmitid
     return true;
   }
 
+  const digitada = () => (porPlataforma ? null : campos.observacoes?.trim() || null);
+
   async function verPrevia() {
     if (!validar()) return;
     setGerando(true);
     try {
       const hoje = hojeBrasilia();
       const arquivos = [];
-      for (const g of grupos()) {
+      for (const g of grupos) {
         const dados: DadosPdfPI = {
           ...campos, numero: "", data_emissao: hoje, veiculacao: g.veiculacao, valor: g.valor,
           mes_referencia: orcamento.mes_referencia,
-          observacoes: porPlataforma ? null : campos.observacoes,
+          observacoes: observacaoDoGrupo(g, digitada()),
           dados_cliente: empresa(cliente), dados_agencia: agenciaPI(agencia.data ?? null),
         };
         const bytes = await gerarPdfPI(dados, { previa: true });
-        arquivos.push({ url: URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" })), rotulo: g.veiculacao });
+        arquivos.push({ url: URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" })), rotulo: rotuloGrupo(g) });
       }
       setPrevia(arquivos);
     } catch (e) {
@@ -263,9 +305,9 @@ function EmitirPI({ aberto, orcamento, versao, cliente, campanhaPadrao, jaEmitid
       const { pis, falhasPdf } = await emitirPIs(orcamento.id, porPlataforma, {
         ...campos,
         campanha: campos.campanha.trim(), periodo: campos.periodo.trim(), prazo_pagamento: campos.prazo_pagamento.trim(),
-        observacoes: porPlataforma ? null : campos.observacoes?.trim() || null,
+        observacoes: digitada(),
         observacao_faturamento: campos.observacao_faturamento?.trim() || null,
-      });
+      }, blocoEscolhido ? [blocoEscolhido] : escolhidos.map((b) => b.nome));
       onEmitidos(pis, falhasPdf);
     } catch (e) {
       setConfirmar(false);
@@ -297,26 +339,63 @@ function EmitirPI({ aberto, orcamento, versao, cliente, campanhaPadrao, jaEmitid
           )}
           {jaEmitidos.length > 0 && (
             <div className="aviso aviso-info">
-              <p>Este orçamento já tem P.I. emitido ({jaEmitidos.map((p) => p.numero).join(", ")}). Emitir de novo gera números novos; cancele o anterior se for substituí-lo.</p>
+              <p>Este orçamento já tem P.I. emitido ({jaEmitidos.map((p) => `${p.numero}${p.bloco && comNomes ? ` (${p.bloco})` : ""}`).join(", ")}). Emitir de novo gera números novos; cancele o anterior se for substituí-lo.</p>
             </div>
+          )}
+          {comNomes && aprovados.length < todos.length && (
+            <div className="aviso aviso-atencao">
+              <p>Ainda sem aprovação: {todos.filter((b) => b.status !== "aprovado").map((b) => b.nome).join(", ")}. Esses blocos geram P.I. depois de aprovados.</p>
+            </div>
+          )}
+
+          {comNomes && aprovados.length > 1 && (
+            <fieldset className="grupo">
+              <legend>Bloco de boleto</legend>
+              <div className="opcoes-radio">
+                <label className="check">
+                  <input type="radio" name="bloco" checked={blocoEscolhido === null} onChange={() => escolherBloco(null)} />
+                  <span>Todos os aprovados <small className="suave">({aprovados.map((b) => `${b.nome} ${formatarMoeda(b.total.valor)}`).join("; ")})</small></span>
+                </label>
+                {aprovados.map((b) => (
+                  <label key={b.nome} className="check">
+                    <input type="radio" name="bloco" checked={blocoEscolhido === b.nome} onChange={() => escolherBloco(b.nome)} />
+                    <span>Só {b.nome} <small className="suave">({formatarMoeda(b.total.valor)})</small></span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           )}
 
           <fieldset className="grupo">
             <legend>Como emitir</legend>
             <div className="opcoes-radio">
               <label className="check">
-                <input type="radio" name="modo" checked={!porPlataforma} onChange={() => { setPorPlataforma(false); setPrevia(null); }} />
-                <span>Um P.I. consolidado <small className="suave">({plataformas.map((p) => p.plataforma).join(", ")}: {formatarMoeda(total)})</small></span>
+                <input type="radio" name="modo" checked={!porPlataforma}
+                  onChange={() => { setPorPlataforma(false); setCampos((c) => ({ ...c, observacoes: detalhamento(escolhidos) })); setPrevia(null); }} />
+                <span>{escolhidos.length > 1 ? "Um P.I. consolidado por bloco" : "Um P.I. consolidado"}{" "}
+                  <small className="suave">({escolhidos.map((b) => `${comNomes ? `${b.nome}: ` : ""}${b.canais.map((c) => c.canal).join(", ")} ${formatarMoeda(b.total.valor)}`).join("; ")})</small></span>
               </label>
-              {plataformas.length > 1 && (
+              {algumComVariosCanais && (
                 <label className="check">
                   <input type="radio" name="modo" checked={porPlataforma} onChange={() => { setPorPlataforma(true); setPrevia(null); }} />
-                  <span>Um P.I. por plataforma <small className="suave">({plataformas.map((p) => `${p.plataforma} ${formatarMoeda(p.valor)}`).join("; ")})</small></span>
+                  <span>Um P.I. por canal{escolhidos.length > 1 ? " em cada bloco" : ""}{" "}
+                    <small className="suave">({escolhidos.map((b) => `${comNomes ? `${b.nome}: ` : ""}${b.canais.map((c) => `${c.canal} ${formatarMoeda(c.valor)}`).join(", ")}`).join("; ")})</small></span>
                 </label>
               )}
             </div>
           </fieldset>
 
+          <div className="lista-grupos-pi">
+            <p className="pequeno suave">Vão sair {quantos === 1 ? "1 P.I." : `${quantos} P.I.s`}:</p>
+            <ul>
+              {grupos.map((g) => (
+                <li key={`${g.bloco}-${g.plataforma}`}>
+                  <strong>{rotuloGrupo(g)}</strong> <span className="tab-num">{formatarMoeda(g.valor)}</span>
+                  {g.projetos && <span className="celula-sub">Observação: Projetos: {g.projetos}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
           <div className="grade-2">
             <Campo rotulo="Campanha" value={campos.campanha} onChange={(e) => set("campanha", e.target.value)} maxLength={160} />
             <Campo rotulo="Período" value={campos.periodo} onChange={(e) => set("periodo", e.target.value)} maxLength={120}
@@ -350,7 +429,7 @@ function EmitirPI({ aberto, orcamento, versao, cliente, campanhaPadrao, jaEmitid
           {!porPlataforma && (
             <CampoTexto rotulo="Observações" rows={4} value={campos.observacoes ?? ""} maxLength={1500}
               onChange={(e) => set("observacoes", e.target.value || null)}
-              ajuda={plataformas.length > 1 ? "Já vem com o valor de cada plataforma. Edite se quiser." : "Opcional. Aparece no quadro ao lado dos dados da campanha."} />
+              ajuda="Opcional. Sai depois da linha \"Projetos: ...\" no quadro de observações do P.I." />
           )}
           <Campo rotulo="Observação do faturamento" value={campos.observacao_faturamento ?? ""} maxLength={500}
             onChange={(e) => set("observacao_faturamento", e.target.value || null)} ajuda="Opcional. Aparece no fim do P.I." />
