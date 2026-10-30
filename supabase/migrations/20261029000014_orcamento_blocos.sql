@@ -137,7 +137,8 @@ begin
 end;
 $$;
 
-create trigger budget_lines_blocos after insert or update or delete on public.budget_lines
+-- Nome depois de "budget_lines_historico": o histórico grava antes, com a situação do bloco ainda intacta.
+create trigger budget_lines_sincronizar_blocos after insert or update or delete on public.budget_lines
   for each row execute function private.blocos_da_linha();
 
 -- Total de um bloco na versão.
@@ -176,10 +177,11 @@ begin
   if tg_op = 'UPDATE' and new.version_id <> old.version_id then
     raise exception 'Não é possível mover a linha para outra versão.' using errcode = '42501';
   end if;
-  -- Trava a versão: mudanças de linha ficam em fila com a decisão do cliente
-  -- (decidir_orcamento trava a mesma linha) e com outras exclusões.
+  -- Trava orçamento e versão, na mesma ordem das funções do fluxo: mudanças de
+  -- linha ficam em fila com a decisão do cliente e com outras exclusões.
+  select * into v_b from public.budgets
+   where id = (select budget_id from public.budget_versions where id = coalesce(new.version_id, old.version_id)) for update;
   select * into v_v from public.budget_versions where id = coalesce(new.version_id, old.version_id) for update;
-  select * into v_b from public.budgets where id = v_v.budget_id;
   if v_b.status = 'cancelado' then
     raise exception 'Orçamento cancelado não pode ser alterado.' using errcode = '42501';
   end if;
@@ -197,6 +199,10 @@ begin
   new.descricao := nullif(btrim(coalesce(new.descricao, '')), '');
   new.projeto := nullif(btrim(regexp_replace(coalesce(new.projeto, ''), '\s+', ' ', 'g')), '');
   new.bloco := coalesce(nullif(btrim(regexp_replace(coalesce(new.bloco, ''), '\s+', ' ', 'g')), ''), 'Geral');
+  -- "revista" e "Revista" são o mesmo bloco: usa o nome que já existe na versão.
+  new.bloco := coalesce((select l.bloco from public.budget_lines l
+                          where l.version_id = new.version_id and lower(l.bloco) = lower(new.bloco) and l.id <> new.id
+                          order by l.ordem limit 1), new.bloco);
   new.aliquota := private.aliquota_plataforma(new.plataforma);
   return new;
 end;
@@ -436,6 +442,7 @@ declare
   v_eu public.profiles%rowtype;
   v_k record;
   v_n integer := 0;
+  v_enviou boolean := false;
 begin
   select * into v_b from public.budgets where id = p_budget for update;
   if not found or not private.staff_pode_orcamento(p_budget) then
@@ -453,6 +460,11 @@ begin
   if v_v.status = 'rascunho' then
     perform public.enviar_orcamento(p_budget);
     select * into v_v from public.budget_versions where id = v_v.id;
+    v_enviou := true;
+  end if;
+  -- Rascunho igual ao já aprovado: o envio manteve a aprovação de tudo; não há o que registrar.
+  if v_v.status = 'aprovado' and v_enviou then
+    return (select status from public.budgets where id = p_budget);
   end if;
   if v_v.status = 'aprovado' then
     raise exception 'Este orçamento já está aprovado.' using errcode = 'P0001';
@@ -480,6 +492,10 @@ begin
     update public.budget_blocks set status = 'aprovado', decidido_em = now() where version_id = v_v.id and bloco = v_k.bloco;
     v_n := v_n + 1;
   end loop;
+  if v_n = 0 and v_enviou then
+    -- Os blocos escolhidos já ficaram aprovados no envio (iguais à versão anterior).
+    return (select status from public.budgets where id = p_budget);
+  end if;
   if v_n = 0 then
     raise exception 'Não há bloco para aprovar neste orçamento.' using errcode = 'P0001';
   end if;
@@ -520,6 +536,10 @@ begin
   if v_atual.status = 'pendente' then
     update public.budget_versions set status = 'substituida' where id = v_atual.id;
   end if;
+  -- Blocos sem decisão final da versão anterior ficam substituídos (os aprovados
+  -- continuam aprovados: é deles que a versão nova herda a aprovação).
+  update public.budget_blocks set status = 'substituida'
+   where version_id = v_atual.id and status in ('pendente', 'alteracoes_solicitadas');
   insert into public.budget_versions (budget_id, numero, status, observacao)
   values (p_budget, v_atual.numero + 1, 'rascunho', nullif(btrim(coalesce(p_observacao, '')), ''))
   returning id into v_nova;

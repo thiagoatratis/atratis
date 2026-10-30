@@ -45,9 +45,11 @@ const agenciaPI = (a: Agencia | null): DadosEmpresaPI => ({
  * baixa, envia por e-mail (pelo sistema ou pelo próprio e-mail) e cancela;
  * o cliente vê e baixa.
  */
-export function PedidosInsercao({ orcamento, versao, cliente, campanha, equipe }: {
+export function PedidosInsercao({ orcamento, versao, versoes, cliente, campanha, equipe }: {
   orcamento: Orcamento;
   versao: VersaoOrcamento | undefined;
+  /** Todas as versões (para abrir por canal os P.I.s consolidados de versões antigas no e-mail). */
+  versoes?: VersaoOrcamento[];
   cliente: Cliente | undefined;
   campanha: string | undefined;
   equipe: boolean;
@@ -64,6 +66,11 @@ export function PedidosInsercao({ orcamento, versao, cliente, campanha, equipe }
   const podeEmitir = equipe && orcamento.status !== "cancelado" && !!versao?.blocos.some((b) => b.status === "aprovado");
   const lista = pis.data ?? [];
   const emitidos = lista.filter((p) => p.status === "emitido");
+  // Para o e-mail: de cada bloco, só a emissão mais recente (evita somar um consolidado e os por canal do mesmo bloco).
+  const ultimaEmissao = emitidos.filter((p) => {
+    const doBloco = emitidos.filter((x) => (x.bloco ?? "") === (p.bloco ?? ""));
+    return p.created_at === doBloco.reduce((m, x) => (x.created_at > m ? x.created_at : m), "");
+  });
   if (!podeEmitir && !lista.length && !pis.loading) return null;
 
   async function baixar(p: PedidoInsercao) {
@@ -163,7 +170,8 @@ export function PedidosInsercao({ orcamento, versao, cliente, campanha, equipe }
           }} />
       )}
       {email && (
-        <EmailPIs pis={email} orcamento={orcamento} versao={versao} cliente={cliente} onFechar={() => setEmail(null)}
+        <EmailPIs pis={email} marcadosIniciais={email.length > 1 ? ultimaEmissao.map((p) => p.id) : undefined}
+          orcamento={orcamento} versoes={versoes ?? (versao ? [versao] : [])} cliente={cliente} onFechar={() => setEmail(null)}
           onEnviado={() => { setEmail(null); void envios.reload(); void pis.reload(); }} />
       )}
       <CancelarPI pi={cancelando} onFechar={() => setCancelando(null)}
@@ -428,7 +436,7 @@ function EmitirPI({ aberto, orcamento, versao, cliente, campanhaPadrao, jaEmitid
           </div>
 
           {!porPlataforma && (
-            <CampoTexto rotulo="Observações" rows={4} value={campos.observacoes ?? ""} maxLength={1500}
+            <CampoTexto rotulo="Observações" rows={4} value={campos.observacoes ?? ""} maxLength={1300}
               onChange={(e) => set("observacoes", e.target.value || null)}
               ajuda="Opcional. Sai depois da linha com os projetos, no quadro de observações do P.I." />
           )}
@@ -459,19 +467,22 @@ type ModoEnvio = "sistema" | "manual";
  * e manda pelo próprio e-mail. Destinatários: sugere os aprovadores do
  * cliente e o e-mail de contato do cadastro; a equipe tira e põe na hora.
  */
-function EmailPIs({ pis: oferecidos, orcamento, versao, cliente, onFechar, onEnviado }: {
-  pis: PedidoInsercao[]; orcamento: Orcamento; versao: VersaoOrcamento | undefined; cliente: Cliente | undefined;
+function EmailPIs({ pis: oferecidos, marcadosIniciais, orcamento, versoes, cliente, onFechar, onEnviado }: {
+  pis: PedidoInsercao[]; marcadosIniciais?: string[]; orcamento: Orcamento; versoes: VersaoOrcamento[]; cliente: Cliente | undefined;
   onFechar: () => void; onEnviado: () => void;
 }) {
   const avisar = useAviso();
   const { perfil } = useAuth();
   // Com vários P.I.s, a equipe escolhe quais vão (ex.: só os por plataforma).
-  const [marcados, setMarcados] = useState<string[]>(() => oferecidos.map((p) => p.id));
+  const [marcados, setMarcados] = useState<string[]>(() => {
+    const iniciais = marcadosIniciais?.filter((id) => oferecidos.some((p) => p.id === id)) ?? [];
+    return iniciais.length ? iniciais : oferecidos.map((p) => p.id);
+  });
   const pis = useMemo(() => oferecidos.filter((p) => marcados.includes(p.id)), [oferecidos, marcados]);
   const padrao = useMemo(() => emailPadrao(pis, {
-    distribuicao: distribuicaoDosPIs(pis, (vid) => (vid === versao?.id ? versao.linhas : [])),
+    distribuicao: distribuicaoDosPIs(pis, (vid) => versoes.find((v) => v.id === vid)?.linhas ?? []),
     remetente: perfil?.nome || null,
-  }), [pis, versao, perfil?.nome]);
+  }), [pis, versoes, perfil?.nome]);
   const vinculos = useAsync(() => listarVinculos(orcamento.client_id), [orcamento.client_id]);
   const [modo, setModo] = useState<ModoEnvio>("sistema");
   const [para, setPara] = useState<string[] | null>(null);

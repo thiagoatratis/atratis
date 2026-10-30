@@ -173,7 +173,8 @@ export function AprovacaoOrcamento({ id }: { id: string }) {
               </div>
             ) : null;
           })()}
-          <TabelaOrcamento linhas={atual.linhas} blocos={atual.blocos} rodapeBloco={decisaoBloco} />
+          <TabelaOrcamento linhas={atual.linhas} blocos={atual.blocos} rodapeBloco={decisaoBloco}
+            mostrarStatus={o.status !== "cancelado" && atual.status !== "substituida"} />
           <HistoricoOrcamento alteracoes={alteracoes} versoes={versoes} />
           <p className="suave pequeno">
             O valor de cada linha é o total a pagar. No Meta Ads, o imposto de 12,15% já está incluso nesse valor.

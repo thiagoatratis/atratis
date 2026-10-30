@@ -161,3 +161,53 @@ do $$ begin
 exception when insufficient_privilege then raise notice 'ok  blocos só mudam pelo fluxo';
 end $$;
 reset role;
+
+-- ===================================================================
+\echo '— Casos da revisão'
+-- ===================================================================
+select tests.login('equipe1');
+set role authenticated;
+-- Versão anterior substituída: blocos sem decisão ficam "substituida", aprovados continuam.
+select public.nova_versao_orcamento('a0000000-0000-0000-0000-000000000001', 'Mais um ajuste');
+select tests.ok((select string_agg(k.bloco || ':' || k.status, ',' order by k.bloco) from public.budget_blocks k
+                   join public.budget_versions v on v.id = k.version_id
+                  where v.budget_id = 'a0000000-0000-0000-0000-000000000001' and v.numero = 2)
+                = 'Extra:substituida,Geral:aprovado,Revista:aprovado',
+  'versão trocada: bloco pendente fica substituído, aprovados continuam');
+-- Rascunho igual ao aprovado: aprovação em reunião só envia e mantém tudo aprovado (sem erro).
+insert into public.budgets (id, client_id, mes_referencia) values ('a0000000-0000-0000-0000-000000000002', tests.id('nortis'), '2027-08-01');
+insert into public.budget_lines (version_id, bloco, plataforma, valor, ordem)
+select v.id, x.bloco, 'Meta Ads', x.valor, x.ordem from public.budget_versions v,
+  (values ('Geral', 100, 1), ('Revista', 200, 2)) as x(bloco, valor, ordem)
+ where v.budget_id = 'a0000000-0000-0000-0000-000000000002';
+select public.enviar_orcamento('a0000000-0000-0000-0000-000000000002');
+select public.aprovar_orcamento_em_reuniao('a0000000-0000-0000-0000-000000000002', now(), 'Maria');
+select public.nova_versao_orcamento('a0000000-0000-0000-0000-000000000002', null);
+select tests.ok(public.aprovar_orcamento_em_reuniao('a0000000-0000-0000-0000-000000000002', now(), 'Maria', null, array['Revista'])
+                = 'aprovado',
+  'reunião num rascunho igual ao aprovado: envia e continua aprovado, sem erro');
+-- Nome de bloco com outra caixa vai para o bloco que já existe.
+insert into public.budgets (id, client_id, mes_referencia) values ('a0000000-0000-0000-0000-000000000003', tests.id('nortis'), '2027-09-01');
+insert into public.budget_lines (version_id, bloco, plataforma, valor, ordem)
+select v.id, x.bloco, 'Meta Ads', 100, x.ordem from public.budget_versions v,
+  (values ('Revista', 1), ('revista', 2), ('Geral', 3)) as x(bloco, ordem)
+ where v.budget_id = 'a0000000-0000-0000-0000-000000000003';
+select tests.ok((select string_agg(distinct bloco, ',' order by bloco) from public.budget_lines l
+                   join public.budget_versions v on v.id = l.version_id where v.budget_id = 'a0000000-0000-0000-0000-000000000003')
+                = 'Geral,Revista',
+  '"revista" entra no bloco "Revista" que já existe');
+select public.enviar_orcamento('a0000000-0000-0000-0000-000000000003');
+reset role;
+select tests.login('cli_nortis');
+set role authenticated;
+do $$ begin
+  perform public.decidir_orcamento('a0000000-0000-0000-0000-000000000003', 'aprovado', null, 250);
+  raise exception 'FALHOU: aprovou com total errado' using errcode = 'TF001';
+exception when raise_exception then raise notice 'ok  decisão do orçamento inteiro confere o total de todos os blocos';
+end $$;
+select tests.ok(public.decidir_orcamento('a0000000-0000-0000-0000-000000000003', 'aprovado', null, 300) = 'aprovado',
+  'decisão do orçamento inteiro com o total certo aprova');
+select tests.ok((select string_agg(bloco || '=' || total, ',' order by bloco) from public.budget_approvals
+                  where budget_id = 'a0000000-0000-0000-0000-000000000003') = 'Geral=100.00,Revista=200.00',
+  'decisão do orçamento inteiro aprova cada bloco, uma decisão por bloco');
+reset role;

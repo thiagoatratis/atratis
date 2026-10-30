@@ -84,14 +84,23 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
     ? blocosAtuais.map((b) => b.nome)
     : blocosAtuais.filter((b) => b.status === "pendente" || b.status === "alteracoes_solicitadas").map((b) => b.nome);
   const podeAprovarEmReuniao = editavel && (atual?.linhas.length ?? 0) > 0 && faltaDecidir.length > 0;
-  const ultimaDecisaoDoBloco = (bloco: string) => decisoes
-    .filter((d) => d.version_id === atual?.id && (d.bloco ?? BLOCO_PADRAO) === bloco).at(-1);
+  // Última decisão do bloco desde o último envio dele (a anterior fica só no histórico).
+  const ultimaDecisaoDoBloco = (bloco: string) => {
+    const info = atual?.blocos.find((b) => b.bloco === bloco);
+    return decisoes.filter((d) => d.version_id === atual?.id && (d.bloco ?? BLOCO_PADRAO) === bloco
+      && d.created_at >= (info?.enviado_em ?? atual?.enviado_em ?? "")).at(-1);
+  };
+  const mostrarCaixasReuniao = faltaDecidir.length > 1 || mostrarNomesDosBlocos(blocosAtuais);
 
-  // Mudança em bloco já aprovado: continua aprovado, mas o P.I. emitido não muda.
-  const confirmarSeAprovado = (bloco: string) => atual?.blocos.find((b) => b.bloco === bloco)?.status !== "aprovado"
-    || window.confirm(
-      `${mostrarNomesDosBlocos(blocosAtuais) ? `O bloco "${bloco}"` : "Este orçamento"} já foi aprovado. A mudança fica no histórico (que o cliente também vê) e ele continua aprovado.\n\n`
+  // Mudança que toca bloco já aprovado (o de antes ou o de depois): continua aprovado, mas o P.I. emitido não muda.
+  const confirmarSeAprovado = (blocos: string[]) => {
+    const aprovados = [...new Set(blocos)].filter((nome) => atual?.blocos.find((b) => b.bloco.toLocaleLowerCase("pt-BR")
+      === nome.toLocaleLowerCase("pt-BR"))?.status === "aprovado");
+    return !aprovados.length || window.confirm(
+      `${mostrarNomesDosBlocos(blocosAtuais) ? `O bloco "${aprovados.join('" e o bloco "')}" já foi aprovado` : "Este orçamento já foi aprovado"}. `
+      + "A mudança fica no histórico (que o cliente também vê) e o valor novo continua aprovado, sem passar pelo cliente.\n\n"
       + "P.I. já emitido não muda: se precisar, cancele e emita de novo.");
+  };
   const decisoesDaVista = decisoes.filter((d) => d.version_id === vista?.id);
 
   async function enviar() {
@@ -110,7 +119,7 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
 
   async function excluir(l: LinhaOrcamento) {
     if (!window.confirm(`Excluir a linha ${l.plataforma}${l.descricao ? ` (${l.descricao})` : ""}?${enviada ? " A remoção fica no histórico que o cliente vê." : ""}`)) return;
-    if (!confirmarSeAprovado(l.bloco)) return;
+    if (!confirmarSeAprovado([l.bloco])) return;
     try {
       await excluirLinha(l.id);
       await dados.reload();
@@ -200,7 +209,8 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
               Cada linha tem o bloco de boleto, o projeto, o canal, o objetivo e o valor. O imposto do Meta Ads (12,15%) já fica incluso.
             </Vazio>
           ) : (
-            <TabelaOrcamento linhas={vista.linhas} blocos={vista.blocos} mostrarStatus={vista.status !== "rascunho"}
+            <TabelaOrcamento linhas={vista.linhas} blocos={vista.blocos}
+              mostrarStatus={vista.status !== "rascunho" && vista.status !== "substituida" && o.status !== "cancelado"}
               onEditar={rascunho ? (l) => setLinha(l) : undefined}
               onExcluir={rascunho ? (l) => void excluir(l) : undefined}
               rodapeBloco={(b) => {
@@ -230,7 +240,7 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
           {decisoesDaVista.length > 0 && <ListaDecisoes decisoes={decisoesDaVista} />}
           <HistoricoOrcamento alteracoes={alteracoes} versoes={versoes} />
         </section>
-        <PedidosInsercao orcamento={o} versao={atual} cliente={cliente} campanha={campanha?.nome} equipe />
+        <PedidosInsercao orcamento={o} versao={atual} versoes={versoes} cliente={cliente} campanha={campanha?.nome} equipe />
         </div>
 
         <aside className="lateral-detalhe">
@@ -264,11 +274,11 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
       <Cancelar aberto={cancelando} budgetId={o.id} onFechar={() => setCancelando(false)}
         onPronto={() => { setCancelando(false); avisar("Orçamento cancelado."); void dados.reload(); }} />
       <AprovarEmReuniao aberto={reuniao} onFechar={() => setReuniao(false)}
-        oQue={faltaDecidir.length > 1 || mostrarNomesDosBlocos(blocosAtuais)
+        oQue={mostrarCaixasReuniao
           ? <>os blocos marcados abaixo do orçamento <strong>{tituloOrcamento(o)}</strong></>
           : <>o orçamento <strong>{tituloOrcamento(o)}</strong> ({formatarMoeda(totais(atual?.linhas ?? []).valor)})</>}
         aviso={atual?.status === "rascunho" ? "O orçamento ainda não foi enviado: ele fica enviado e aprovado ao mesmo tempo." : undefined}
-        extra={(faltaDecidir.length > 1 || mostrarNomesDosBlocos(blocosAtuais)) && (
+        extra={mostrarCaixasReuniao && (
           <fieldset className="grupo">
             <legend>Blocos aprovados na reunião</legend>
             <div className="opcoes-radio">
@@ -283,9 +293,8 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
           </fieldset>
         )}
         onConfirmar={async (quando, quem, obs) => {
-          if (faltaDecidir.length > 1 && !blocosReuniao.length) throw new Error("Marque pelo menos um bloco.");
-          // Rascunho: o envio pode manter aprovações; manda só os nomes marcados.
-          await aprovarOrcamentoEmReuniao(o.id, quando, quem, obs, faltaDecidir.length > 1 ? blocosReuniao : undefined);
+          if (mostrarCaixasReuniao && !blocosReuniao.length) throw new Error("Marque pelo menos um bloco.");
+          await aprovarOrcamentoEmReuniao(o.id, quando, quem, obs, mostrarCaixasReuniao ? blocosReuniao : undefined);
           setReuniao(false);
           avisar("Aprovação em reunião registrada. Agora é só emitir os P.I.s logo abaixo dos valores.");
           await dados.reload();
@@ -333,7 +342,7 @@ export function ListaDecisoes({ decisoes }: { decisoes: DecisaoOrcamento[] }) {
 function LinhaFormulario({ linha, versionId, ordem, projetos, blocos, onFechar, onPronto, antesDeSalvar }: {
   linha: LinhaOrcamento | { bloco: string } | null; versionId: string; ordem: number; projetos: string[]; blocos: string[];
   onFechar: () => void; onPronto: () => void;
-  antesDeSalvar?: (bloco: string) => boolean;
+  antesDeSalvar?: (blocos: string[]) => boolean;
 }) {
   const aberto = linha !== null;
   const existente = linha && "id" in linha ? linha : null;
@@ -372,7 +381,7 @@ function LinhaFormulario({ linha, versionId, ordem, projetos, blocos, onFechar, 
     const campos: CamposLinha = {
       bloco: bloco.trim(), projeto: projeto.trim() || null, plataforma: nome, descricao: descricao.trim() || null, valor: numero,
     };
-    if (antesDeSalvar && !antesDeSalvar(existente?.bloco ?? campos.bloco)) return;
+    if (antesDeSalvar && !antesDeSalvar(existente ? [existente.bloco, campos.bloco] : [campos.bloco])) return;
     setSalvando(true);
     try {
       if (existente) await atualizarLinha(existente.id, campos);
