@@ -292,7 +292,13 @@ export function OrcamentoDetalhe({ id }: { id: string }) {
         }} />
       <AvisarCliente aberto={avisarCliente} onFechar={() => setAvisarCliente(false)}
         caminho={`/orcamentos/${o.id}`} clientId={o.client_id}
-        mensagem={(link, pessoal) => mensagemOrcamento(o, totais(atual?.linhas ?? []).valor, link, pessoal)} />
+        mensagem={(link, pessoal) => mensagemOrcamento(o, totais(atual?.linhas ?? []).valor, link, pessoal)}
+        extra={atual && atual.linhas.length > 0 && (
+          <div className="extra-imagem">
+            <p className="suave pequeno">Quer mandar a tabela junto? Baixe a imagem do orçamento no formato da planilha.</p>
+            <BaixarImagemOrcamento orcamento={o} versao={atual} cliente={cliente?.nome_comercial} />
+          </div>
+        )} />
     </>
   );
 }

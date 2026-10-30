@@ -726,3 +726,5 @@ a.celula-titulo:hover { text-decoration: underline; text-underline-offset: 3px; 
 .lista-grupos-pi ul { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; }
 .lista-grupos-pi li { padding: 8px 10px; border: 1px solid var(--linha); border-radius: var(--raio-sm); font-size: 13.5px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .lista-grupos-pi li .celula-sub { flex-basis: 100%; }
+.extra-imagem { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 4px; border-top: 1px solid var(--linha); }
+.extra-imagem p { margin: 0; }

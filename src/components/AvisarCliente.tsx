@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { LuCopy, LuKeyRound, LuLink } from "react-icons/lu";
 import { useAsync } from "../lib/useAsync";
 import { gerarLinkAcesso, listarVinculos } from "../lib/api";
@@ -30,12 +30,14 @@ const GERAL = "";
  *  - geral: o mesmo endereço para todos; quem não estiver conectado entra com o e-mail;
  *  - pessoal: entra direto, sem e-mail, uma vez e por tempo limitado (decisão de 23/10/2026).
  */
-export function AvisarCliente({ aberto, caminho, clientId, mensagem, onFechar }: {
+export function AvisarCliente({ aberto, caminho, clientId, mensagem, extra, onFechar }: {
   aberto: boolean;
   caminho: string;
   clientId: string;
   /** Monta o texto; `pessoal` indica link que já faz o login. */
   mensagem: (link: string, pessoal: boolean) => string;
+  /** Conteúdo a mais no fim (ex.: baixar a imagem do orçamento para mandar junto). */
+  extra?: ReactNode;
   onFechar: () => void;
 }) {
   const avisar = useAviso();
@@ -114,6 +116,7 @@ export function AvisarCliente({ aberto, caminho, clientId, mensagem, onFechar }:
           <code>{ehPessoal ? "Link pessoal gerado. Ele está na mensagem abaixo." : link}</code>
         </div>
         <CampoTexto rotulo="Mensagem" rows={7} value={texto} onChange={(e) => setTexto(e.target.value)} />
+        {extra}
       </div>
     </Modal>
   );
