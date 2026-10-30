@@ -429,7 +429,7 @@ function EmitirPI({ aberto, orcamento, versao, cliente, campanhaPadrao, jaEmitid
           {!porPlataforma && (
             <CampoTexto rotulo="Observações" rows={4} value={campos.observacoes ?? ""} maxLength={1500}
               onChange={(e) => set("observacoes", e.target.value || null)}
-              ajuda="Opcional. Sai depois da linha \"Projetos: ...\" no quadro de observações do P.I." />
+              ajuda="Opcional. Sai depois da linha com os projetos, no quadro de observações do P.I." />
           )}
           <Campo rotulo="Observação do faturamento" value={campos.observacao_faturamento ?? ""} maxLength={500}
             onChange={(e) => set("observacao_faturamento", e.target.value || null)} ajuda="Opcional. Aparece no fim do P.I." />
