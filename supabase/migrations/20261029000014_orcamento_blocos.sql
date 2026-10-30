@@ -460,11 +460,11 @@ begin
   if v_v.status not in ('pendente', 'alteracoes_solicitadas') then
     raise exception 'Este orçamento não pode ser aprovado agora.' using errcode = 'P0001';
   end if;
+  -- Bloco escolhido que já está aprovado (ex.: mantido no envio da versão nova) é ignorado.
   if p_blocos is not null and exists (
        select 1 from unnest(p_blocos) x(bloco)
-        where not exists (select 1 from public.budget_blocks k where k.version_id = v_v.id and k.bloco = x.bloco
-                            and k.status in ('pendente', 'alteracoes_solicitadas'))) then
-    raise exception 'Algum bloco escolhido não existe ou já foi aprovado.' using errcode = 'P0001';
+        where not exists (select 1 from public.budget_blocks k where k.version_id = v_v.id and k.bloco = x.bloco)) then
+    raise exception 'Algum bloco escolhido não existe neste orçamento.' using errcode = 'P0001';
   end if;
 
   select * into v_eu from public.profiles where id = auth.uid();

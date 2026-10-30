@@ -9,12 +9,14 @@ const doisDigitos = (n: number) => String(n).padStart(2, "0");
  * reunião, quem aprovou pelo cliente e uma observação. Fica no histórico com
  * o nome de quem registrou, e o cliente vê "aprovado em reunião".
  */
-export function AprovarEmReuniao({ aberto, oQue, aviso, onConfirmar, onFechar }: {
+export function AprovarEmReuniao({ aberto, oQue, aviso, extra, onConfirmar, onFechar }: {
   aberto: boolean;
   /** O que será aprovado, ex.: "o orçamento de Novembro/2026 (R$ 1.100,00)". */
   oQue: ReactNode;
   /** Observação extra, ex.: "As 2 peças em rascunho serão enviadas e aprovadas." */
   aviso?: ReactNode;
+  /** Campos a mais (ex.: quais blocos do orçamento foram aprovados). */
+  extra?: ReactNode;
   onConfirmar: (quando: string, quem: string, observacao: string) => Promise<void>;
   onFechar: () => void;
 }) {
@@ -61,6 +63,7 @@ export function AprovarEmReuniao({ aberto, oQue, aviso, onConfirmar, onFechar }:
         <p>Registra que o cliente aprovou {oQue} em reunião. Fica no histórico com o seu nome, e o cliente vê "aprovado em reunião" no portal.</p>
         {aviso && <div className="aviso aviso-info"><p>{aviso}</p></div>}
         {erro && <div className="aviso aviso-erro" role="alert"><p>{erro}</p></div>}
+        {extra}
         <div className="grade-2">
           <Campo rotulo="Data da reunião" type="date" obrigatorio value={data} onChange={(e) => setData(e.target.value)} />
           <Campo rotulo="Hora" type="time" obrigatorio value={hora} onChange={(e) => setHora(e.target.value)} />

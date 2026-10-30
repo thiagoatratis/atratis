@@ -658,37 +658,68 @@ a.celula-titulo:hover { text-decoration: underline; text-underline-offset: 3px; 
   .linha-adicionar > .btn { margin-top: 0; }
 }
 
-/* ---------------- Orçamento por projeto (Projetos × Objetivo × Mídias) ---------------- */
-.tabela-projetos thead th { background: var(--tinta); color: #fff; font-size: 12.5px; }
+/* ---------------- Orçamento por bloco (planilha Verba × Projeto × Objetivo) ---------------- */
+.orcamento-blocos { display: flex; flex-direction: column; gap: 22px; }
+.bloco-orcamento { display: flex; flex-direction: column; gap: 10px; }
+.bloco-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bloco-topo h3 { margin: 0; font-size: 16px; }
+.bloco-total { margin-left: auto; font-weight: 700; }
+.bloco-corpo { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 14px; align-items: start; }
+.total-geral { margin: 0; text-align: right; font-size: 14px; }
+
+.tabela-projetos { font-size: 13.5px; }
+.tabela-projetos th, .tabela-projetos td { padding: 7px 10px; }
+.tabela-projetos thead th { background: var(--tinta); color: #fff; font-size: 12px; }
+.tabela-projetos th.centro { text-align: center; }
 .tabela-projetos .celula-projeto {
-  background: var(--superficie-2); color: var(--tinta); font-weight: 700; font-size: 14px; text-align: center;
-  vertical-align: middle; white-space: normal; min-width: 120px; max-width: 200px; border-right: 1px solid var(--linha);
+  background: var(--superficie-2); color: var(--tinta); font-weight: 700; font-size: 13.5px; text-align: center;
+  vertical-align: middle; white-space: normal; min-width: 96px; max-width: 170px; border-right: 1px solid var(--linha);
 }
 .tabela-projetos tr.inicio-projeto > * { border-top: 2px solid var(--linha-forte); }
 .tabela-projetos tbody tr:first-child > * { border-top: 0; }
 .tabela-projetos .celula-objetivo { text-align: center; vertical-align: middle; border-left: 1px solid var(--linha); border-right: 1px solid var(--linha); }
-.tabela-projetos .col-numero { width: 44px; padding-left: 8px; padding-right: 8px; text-align: center; }
-.numero-canal {
-  display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 6px;
-  background: var(--marca); color: #fff; font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums;
-}
-.tabela-projetos tbody td { border-bottom: 1px solid var(--linha); }
-.tabela-projetos tfoot th { background: var(--tinta); color: #fff; text-align: right; }
-.tabela-projetos tfoot td { background: var(--tinta); color: #fff; }
-.tabela-projetos tfoot td strong { color: #fff; }
-.tabela-projetos th.centro { text-align: center; }
+.tabela-projetos .celula-agrupada { vertical-align: middle; border-left: 1px solid var(--linha); }
+.tabela-projetos .col-numero { width: 38px; padding-left: 6px; padding-right: 6px; text-align: center; }
 .tabela-projetos .celula-canal { white-space: nowrap; }
-@media (max-width: 560px) {
-  .tabela-projetos th, .tabela-projetos td { padding: 9px 10px; font-size: 13px; }
-  .tabela-projetos .celula-projeto { min-width: 88px; font-size: 13px; }
-  .tabela-projetos .col-numero { width: 36px; padding-left: 4px; padding-right: 4px; }
+.tabela-projetos tbody td { border-bottom: 1px solid var(--linha); }
+.tabela-projetos tfoot th, .tabela-projetos tfoot td {
+  padding: 9px 10px; background: var(--tinta); color: #fff; font-weight: 700; border: 0;
 }
-/* Tabela por projeto é larga: no orçamento da equipe, os painéis laterais vão para baixo;
-   no portal do cliente, a página fica mais larga. Células mais compactas. */
+.tabela-projetos tfoot th { text-align: right; }
+.tabela-projetos tfoot td strong { color: #fff; }
+.tabela-projetos .acoes-linha .icone-btn { width: 30px; height: 30px; }
+.numero-canal {
+  display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 5px;
+  background: var(--marca); color: #fff; font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums;
+}
+
+.resumo-canais { background: var(--superficie); border: 1px solid var(--linha); border-radius: var(--raio); padding: 12px 14px; font-size: 13.5px; }
+.resumo-canais h4 { margin: 0 0 8px; font-size: 12.5px; color: var(--suave); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+.resumo-canais ul { list-style: none; margin: 0; padding: 0; }
+.resumo-canais li { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+.resumo-canais li .tab-num { margin-left: auto; }
+.resumo-canais .canal-cor { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.resumo-canais .canal-total { border-top: 1px solid var(--linha); margin-top: 4px; padding-top: 8px; font-weight: 700; }
+.resumo-canais dl { margin: 10px 0 0; padding-top: 8px; border-top: 1px dashed var(--linha); display: grid; gap: 4px; color: var(--suave); font-size: 12.5px; }
+.resumo-canais dl div { display: flex; justify-content: space-between; gap: 10px; }
+.resumo-canais dt, .resumo-canais dd { margin: 0; }
+
+.bloco-decisao { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: var(--raio); background: var(--superficie-2); }
+.bloco-decisao .pedido-alteracao { flex: 1 1 100%; }
+
+/* No orçamento da equipe, Dados e Observações vão para baixo da tabela;
+   no portal do cliente, a página fica mais larga. */
 .layout-detalhe.layout-orcamento { grid-template-columns: minmax(0, 1fr); }
 .layout-orcamento .lateral-detalhe { position: static; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: start; }
 .layout-orcamento .lateral-detalhe > .btn { grid-column: 1 / -1; justify-self: start; }
-.portal-conteudo:has(.tabela-projetos) { max-width: 980px; }
-.tabela-projetos th, .tabela-projetos td { padding: 10px 12px; }
-.tabela-projetos .celula-projeto { min-width: 100px; max-width: 170px; }
-.tabela-projetos small.aliquota { display: block; font-size: 11.5px; }
+.portal-conteudo:has(.orcamento-blocos) { max-width: 1120px; }
+
+@media (max-width: 1000px) {
+  .bloco-corpo { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .tabela-projetos th, .tabela-projetos td { padding: 7px 8px; font-size: 12.5px; }
+  .tabela-projetos .celula-projeto { min-width: 80px; }
+}
+.bloco-rodape { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13.5px; }
+.bloco-rodape .btn { margin-left: auto; }

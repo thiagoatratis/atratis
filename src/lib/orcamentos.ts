@@ -16,6 +16,7 @@ const ordenarVersoes = (vs: VersaoOrcamento[]): VersaoOrcamento[] =>
   [...vs].sort((a, b) => a.numero - b.numero).map((v) => ({
     ...v,
     linhas: [...(v.linhas ?? [])].map(numeros).sort((a, b) => a.ordem - b.ordem || a.created_at.localeCompare(b.created_at)),
+    blocos: v.blocos ?? [],
   }));
 
 export const tituloOrcamento = (o: Pick<Orcamento, "titulo" | "mes_referencia">) =>
@@ -40,7 +41,7 @@ export interface ResumoOrcamento extends Orcamento {
 export async function listarOrcamentos(): Promise<ResumoOrcamento[]> {
   const { data, error } = await supabase
     .from("budgets")
-    .select("*, versoes:budget_versions(*, linhas:budget_lines(*))")
+    .select("*, versoes:budget_versions(*, linhas:budget_lines(*), blocos:budget_blocks(*))")
     .order("mes_referencia", { ascending: false })
     .order("updated_at", { ascending: false });
   erro(error);
@@ -82,12 +83,12 @@ export async function salvarObservacoesOrcamento(id: string, texto: string): Pro
 
 export async function listarVersoes(budgetId: string): Promise<VersaoOrcamento[]> {
   const { data, error } = await supabase.from("budget_versions")
-    .select("*, linhas:budget_lines(*)").eq("budget_id", budgetId);
+    .select("*, linhas:budget_lines(*), blocos:budget_blocks(*)").eq("budget_id", budgetId);
   erro(error);
   return ordenarVersoes((data ?? []) as VersaoOrcamento[]);
 }
 
-export interface CamposLinha { projeto: string | null; plataforma: string; descricao: string | null; valor: number }
+export interface CamposLinha { bloco: string; projeto: string | null; plataforma: string; descricao: string | null; valor: number }
 
 /** Linha na ordem de exibição, com o número do canal e quantas linhas cada célula agrupada ocupa. */
 export interface LinhaExibida {
@@ -106,7 +107,7 @@ const chaveTexto = (t: string | null) => (t ?? "").trim().toLocaleLowerCase("pt-
  * primeira vez) e junta objetivos iguais em sequência, como na planilha
  * "Projetos × Objetivo × Mídias". Linhas sem projeto ficam no fim.
  */
-export function agruparPorProjeto(linhas: LinhaOrcamento[]): LinhaExibida[] {
+export function agruparPorProjeto(linhas: LinhaOrcamento[], inicio = 1): LinhaExibida[] {
   const ordenadas = [...linhas].sort((a, b) => a.ordem - b.ordem || a.created_at.localeCompare(b.created_at));
   const grupos = new Map<string, LinhaOrcamento[]>();
   for (const l of ordenadas) {
@@ -124,7 +125,7 @@ export function agruparPorProjeto(linhas: LinhaOrcamento[]): LinhaExibida[] {
         objetivoSpan = 1;
         while (i + objetivoSpan < grupo.length && chaveTexto(grupo[i + objetivoSpan].descricao) === chaveTexto(l.descricao)) objetivoSpan++;
       }
-      saida.push({ linha: l, numero: saida.length + 1, projetoSpan: i === 0 ? grupo.length : 0, objetivoSpan });
+      saida.push({ linha: l, numero: inicio + saida.length, projetoSpan: i === 0 ? grupo.length : 0, objetivoSpan });
     });
   }
   return saida;
@@ -191,6 +192,16 @@ export async function decidirOrcamento(id: string, decisao: "aprovado" | "altera
   return data as StatusOrcamento;
 }
 
+/** Decisão do cliente sobre um bloco; `totalVisto` é o total do bloco na tela dele. */
+export async function decidirBlocoOrcamento(id: string, bloco: string, decisao: "aprovado" | "alteracoes_solicitadas",
+  comentario: string | undefined, totalVisto: number) {
+  const { data, error } = await supabase.rpc("decidir_bloco_orcamento", {
+    p_budget: id, p_bloco: bloco, p_decisao: decisao, p_comentario: comentario ?? null, p_total_visto: totalVisto,
+  });
+  erro(error);
+  return data as StatusOrcamento;
+}
+
 export async function listarAlteracoesOrcamento(budgetId: string): Promise<AlteracaoOrcamento[]> {
   const { data, error } = await supabase.from("budget_changes").select("*")
     .eq("budget_id", budgetId).order("created_at");
@@ -209,9 +220,12 @@ export async function listarDecisoesOrcamento(budgetId: string): Promise<Decisao
   return ((data ?? []) as DecisaoOrcamento[]).map((d) => ({ ...d, total: Number(d.total) }));
 }
 
-export async function aprovarOrcamentoEmReuniao(id: string, quando: string, quem: string, observacao: string): Promise<void> {
+/** `blocos` vazio ou ausente: todos os blocos que faltam aprovar. */
+export async function aprovarOrcamentoEmReuniao(id: string, quando: string, quem: string, observacao: string,
+  blocos?: string[]): Promise<void> {
   const { error } = await supabase.rpc("aprovar_orcamento_em_reuniao", {
     p_budget: id, p_reuniao_em: quando, p_aprovado_por: quem.trim(), p_observacao: observacao.trim() || null,
+    p_blocos: blocos?.length ? blocos : null,
   });
   erro(error);
 }
