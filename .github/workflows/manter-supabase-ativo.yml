@@ -31,7 +31,9 @@ jobs:
             codigo=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
               -H "apikey: $chave" "$SUPABASE_URL/rest/v1/clients?select=id&limit=1" || true)
             echo "Tentativa $tentativa: HTTP $codigo"
-            if [ "$codigo" = "200" ]; then exit 0; fi
+            # 200, ou 401/403 (sem permissão para a chave pública): o banco
+            # respondeu à consulta, então o projeto está ativo.
+            case "$codigo" in 200|401|403) exit 0 ;; esac
             sleep 20
           done
           echo "::error::O Supabase não respondeu (HTTP $codigo). Se o projeto estiver pausado, abra o painel e clique em Resume project."
