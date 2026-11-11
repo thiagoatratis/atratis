@@ -1,0 +1,38 @@
+# Mantém o projeto do Supabase ativo.
+# No plano gratuito, o Supabase pausa o projeto depois de 7 dias sem acesso
+# (aconteceu em 11/2026). Duas vezes por semana, este fluxo faz uma consulta
+# simples ao banco, como o portal faz. A chave usada é a pública (publishable),
+# lida do próprio site publicado, então não precisa de segredo no GitHub.
+name: Manter Supabase ativo
+
+on:
+  schedule:
+    - cron: "17 12 * * 1,4" # segunda e quinta, 09:17 em Brasília
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acessar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Consultar o banco
+        env:
+          SITE: https://atratis-approval.vercel.app
+          SUPABASE_URL: https://jqlxzjigzuodzylaqbao.supabase.co
+        run: |
+          set -euo pipefail
+          js=$(curl -fsS "$SITE/" | grep -oE '/assets/[^"]+\.js' | head -1)
+          chave=$(curl -fsS "$SITE$js" | grep -oE 'sb_publishable_[A-Za-z0-9_-]+' | head -1)
+          if [ -z "$chave" ]; then echo "::error::Chave pública não encontrada no site."; exit 1; fi
+          for tentativa in 1 2 3; do
+            codigo=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
+              -H "apikey: $chave" "$SUPABASE_URL/rest/v1/clients?select=id&limit=1" || true)
+            echo "Tentativa $tentativa: HTTP $codigo"
+            if [ "$codigo" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          echo "::error::O Supabase não respondeu (HTTP $codigo). Se o projeto estiver pausado, abra o painel e clique em Resume project."
+          exit 1
