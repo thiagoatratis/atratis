@@ -38,7 +38,7 @@ done
 echo "→ Dados de teste"
 "${PSQL[@]}" -f tests/db/10_fixtures.sql
 
-for f in tests/db/2*_test.sql; do
+for f in tests/db/[2-8]*_test.sql; do
   echo "→ $(basename "$f")"
   # Os testes de permissão conectam como "authenticator", igual ao PostgREST,
   # para que session_user não seja um superusuário.

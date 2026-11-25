@@ -5,7 +5,7 @@ import { listarClientes, listarUsuarios } from "../lib/api";
 import {
   aprovarSolicitacaoEmReuniao, cancelarSolicitacao, criarPeca, criarVersaoArquivo, criarVersaoLink, descartarRascunho, enviarSolicitacao,
   excluirPeca, listarCampanhas, listarComentarios, listarDecisoes, listarPecas, obterObservacoesSolicitacao,
-  obterSolicitacao, retirarPeca, salvarObservacoesSolicitacao, validarArquivo, versaoAtual,
+  obterSolicitacao, retirarPeca, salvarObservacoesSolicitacao, validarArquivo, versaoAtual, voltarPeca,
 } from "../lib/criativos";
 import { CANAIS, EXTENSOES_ACEITAS, OUTRO, formatarTamanho } from "../lib/canais";
 import { useAuth } from "../lib/auth";
@@ -262,11 +262,18 @@ function CartaoPeca({ peca, solicitacao, decisoes, editavel, onMudou }: {
           )}
           {jaEnviada ? (
             <Botao variante="fantasma" disabled={ocupado}
-              onClick={() => void acao(() => retirarPeca(peca.id), "Peça retirada da aprovação.")}>Retirar peça</Botao>
+              onClick={() => window.confirm(`Retirar "${peca.nome}" da aprovação? Dá para voltar depois.`)
+                && void acao(() => retirarPeca(peca.id), "Peça retirada da aprovação.")}>Retirar peça</Botao>
           ) : (
             <Botao variante="fantasma" className="perigo-texto" disabled={ocupado}
               onClick={() => void acao(() => excluirPeca(peca), "Peça excluída.")}>Excluir peça</Botao>
           )}
+        </footer>
+      )}
+      {editavel && !peca.ativo && (
+        <footer className="peca-acoes">
+          <Botao disabled={ocupado}
+            onClick={() => void acao(() => voltarPeca(peca.id), "Peça de volta na aprovação.")}>Voltar para a aprovação</Botao>
         </footer>
       )}
 

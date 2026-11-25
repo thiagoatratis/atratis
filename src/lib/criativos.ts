@@ -120,6 +120,12 @@ export async function retirarPeca(id: string): Promise<void> {
   erro(error);
 }
 
+/** Desfaz "Retirar peça": a peça volta como estava (mesma versão e decisão). */
+export async function voltarPeca(id: string): Promise<void> {
+  const { error } = await supabase.rpc("voltar_peca", { p_piece: id });
+  erro(error);
+}
+
 function nomeSeguro(nome: string): string {
   const base = nome.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w.-]+/g, "-").replace(/-+/g, "-");
   return base.slice(-80) || "arquivo";
